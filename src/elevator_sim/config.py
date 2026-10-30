@@ -1,0 +1,91 @@
+"""Simulation settings, TOML loading and validation."""
+
+import tomllib
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+# The fixed display order (G4).
+ALGORITHMS = ("round_robin", "nearest_car", "zone_based", "eta", "marginal_insertion")
+BEHAVIOURS = ("min_time",)
+
+# Settings the design defines but this phase doesn't build. Accepting them silently would let a
+# reader believe a guard was active when it wasn't (M12).
+_LATER_SETTINGS = {
+    "fairness_weight": 3,
+    "guard": 4,
+    "skip_limit": 4,
+    "wait_limit": 4,
+    "seat_hold": 4,
+    "assignment_rule": 5,
+}
+_LATER_BEHAVIOURS = {"strict": 3, "weighted": 3}
+_LATER_TABLES = {"express": 2}
+
+_BUILDING_KEYS = {"floors", "elevators", "capacity", "start_floor"}
+_DISPATCH_KEYS = {"algorithm", "behaviour"}
+_INTEGER_KEYS = {"floors", "elevators", "capacity", "start_floor"}
+
+
+class ConfigError(ValueError):
+    """Invalid settings."""
+
+
+@dataclass(frozen=True, slots=True)
+class SimConfig:
+    floors: int = 10
+    elevators: int = 3
+    capacity: int = 6
+    start_floor: int = 1
+    algorithm: str = "marginal_insertion"
+    behaviour: str = "min_time"
+    max_ticks: int | None = None
+
+    def __post_init__(self) -> None:
+        if self.floors < 2:
+            raise ConfigError(f"floors must be at least 2, not {self.floors}")
+        if self.elevators < 1:
+            raise ConfigError(f"elevators must be at least 1, not {self.elevators}")
+        if self.capacity < 1:
+            raise ConfigError(f"capacity must be at least 1, not {self.capacity}")
+        if not 1 <= self.start_floor <= self.floors:
+            raise ConfigError(f"start_floor {self.start_floor} is outside 1..{self.floors}")
+        if self.algorithm not in ALGORITHMS:
+            raise ConfigError(f"unknown algorithm {self.algorithm!r}: use {', '.join(ALGORITHMS)}")
+        if self.behaviour in _LATER_BEHAVIOURS:
+            phase = _LATER_BEHAVIOURS[self.behaviour]
+            raise ConfigError(f"behaviour {self.behaviour!r} arrives in Phase {phase}")
+        if self.behaviour not in BEHAVIOURS:
+            raise ConfigError(f"unknown behaviour {self.behaviour!r}: use {', '.join(BEHAVIOURS)}")
+        if self.max_ticks is not None and self.max_ticks < 1:
+            raise ConfigError(f"max_ticks must be at least 1, not {self.max_ticks}")
+
+
+def _read_section(data: dict[str, Any], name: str, allowed: set[str]) -> dict[str, Any]:
+    section: dict[str, Any] = data.pop(name, {})
+    for key, value in section.items():
+        if key in _LATER_SETTINGS:
+            raise ConfigError(f"setting {key!r} arrives in Phase {_LATER_SETTINGS[key]}")
+        if key not in allowed:
+            raise ConfigError(f"unknown setting {key!r} in [{name}]")
+        if key in _INTEGER_KEYS and not isinstance(value, int):
+            raise ConfigError(f"{key} must be an integer, not {value!r}")
+    return section
+
+
+def load_config(path: Path) -> SimConfig:
+    try:
+        with path.open("rb") as file:
+            data = tomllib.load(file)
+    except FileNotFoundError:
+        raise ConfigError(f"config file not found: {path}") from None
+    except tomllib.TOMLDecodeError as error:
+        raise ConfigError(f"{path}: {error}") from None
+
+    building = _read_section(data, "building", _BUILDING_KEYS)
+    dispatch = _read_section(data, "dispatch", _DISPATCH_KEYS)
+    for table in data:
+        if table in _LATER_TABLES:
+            raise ConfigError(f"[[{table}]] arrives in Phase {_LATER_TABLES[table]}")
+        raise ConfigError(f"unknown section {table!r} in {path}")
+    return SimConfig(**building, **dispatch)
