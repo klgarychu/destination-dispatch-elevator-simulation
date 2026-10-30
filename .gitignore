@@ -1,0 +1,20 @@
+# Private to the project (R2, M15)
+docs/
+sdlc/
+AGENTS.md
+CLAUDE.md
+.claude/
+
+# Environment and tool caches
+.venv/
+__pycache__/
+*.egg-info/
+.hypothesis/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# Generated inputs and run data
+data/generated/
+results/runs/
+results/phase*/
