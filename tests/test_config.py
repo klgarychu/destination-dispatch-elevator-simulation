@@ -72,7 +72,7 @@ def test_tst12_rejects_a_wrongly_typed_setting(tmp_path: Path) -> None:
 
 
 def test_tst12_rejects_a_file_that_is_not_toml(tmp_path: Path) -> None:
-    with pytest.raises(ConfigError, match="config.toml"):
+    with pytest.raises(ConfigError, match=r"config\.toml"):
         load_config(write_toml(tmp_path, "this is not toml"))
 
 
