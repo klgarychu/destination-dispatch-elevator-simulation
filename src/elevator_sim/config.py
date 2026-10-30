@@ -61,6 +61,21 @@ class SimConfig:
             raise ConfigError(f"max_ticks must be at least 1, not {self.max_ticks}")
 
 
+def settings_record(config: SimConfig) -> dict[str, str | float | bool | None]:
+    """All dispatch settings by name. Fields for later phases hold their off value."""
+    return {
+        "algorithm": config.algorithm,
+        "behaviour": config.behaviour,
+        "fairness_weight": None,
+        "guard": "none",
+        "guard_value": None,
+        "seat_hold": False,
+        "assignment_rule": "none",
+        "rule_value": None,
+        "unguarded": True,
+    }
+
+
 def _read_section(data: dict[str, Any], name: str, allowed: set[str]) -> dict[str, Any]:
     section: dict[str, Any] = data.pop(name, {})
     for key, value in section.items():
