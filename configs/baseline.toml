@@ -1,0 +1,6 @@
+# The project default: 10 floors, 3 cars, capacity 6.
+[building]
+floors = 10
+elevators = 3
+capacity = 6
+start_floor = 1
