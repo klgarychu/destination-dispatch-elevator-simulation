@@ -3,6 +3,7 @@
 import csv
 from collections.abc import Sequence
 from dataclasses import dataclass
+from enum import IntEnum
 from pathlib import Path
 
 CSV_HEADER = ["time", "id", "source", "dest"]
@@ -16,12 +17,26 @@ class InputValidationError(ValueError):
         super().__init__("invalid requests:\n  " + "\n  ".join(self.problems))
 
 
+class Direction(IntEnum):
+    DOWN = -1
+    IDLE = 0
+    UP = 1
+
+
 @dataclass(frozen=True, slots=True)
 class Request:
     time: int
     id: str
     source: int
     dest: int
+
+    @property
+    def direction(self) -> Direction:
+        return Direction.UP if self.dest > self.source else Direction.DOWN
+
+    @property
+    def ride_length(self) -> int:
+        return abs(self.dest - self.source)
 
 
 @dataclass(slots=True)
