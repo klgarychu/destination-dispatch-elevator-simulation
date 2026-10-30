@@ -1,7 +1,14 @@
-"""Checks shared by the property, golden and scenario tests."""
+"""Checks and fixtures shared by the tests."""
 
+from collections.abc import Sequence
+
+from elevator_sim.boarding.behaviours import make_behaviour
+from elevator_sim.elevators.base import Elevator
+from elevator_sim.elevators.normal import NormalElevator
 from elevator_sim.engine import SimulationResult
-from elevator_sim.requests import Request
+from elevator_sim.forecast import Forecaster
+from elevator_sim.requests import Direction, Passenger, Request
+from elevator_sim.schedulers.base import FleetView, fleet_view
 
 
 def assert_rules_hold(result: SimulationResult, capacity: int, floors: int) -> None:
@@ -34,3 +41,28 @@ def assert_rules_hold(result: SimulationResult, capacity: int, floors: int) -> N
 def requests_at(*rows: tuple[int, int, int]) -> list[Request]:
     """Build requests from (time, source, dest) rows, with ids in order."""
     return [Request(t, f"p{i + 1}", source, dest) for i, (t, source, dest) in enumerate(rows)]
+
+
+def car_at(
+    car_id: int,
+    position: int,
+    direction: Direction = Direction.IDLE,
+    riders: Sequence[int] = (),
+    waiting: Sequence[tuple[str, int, int]] = (),
+    floors: int = 10,
+    capacity: int = 6,
+) -> NormalElevator:
+    """A car placed mid-journey. `riders` are destinations, `waiting` is (id, source, dest)."""
+    car = NormalElevator(car_id, floors, capacity, position, make_behaviour("min_time"))
+    car.direction = direction
+    for index, dest in enumerate(riders):
+        source = position if dest != position else position - 1
+        request = Request(0, f"rider{car_id}.{index}", source, dest)
+        car.riders.append(Passenger(request, index, car_id, board_tick=0))
+    for index, (name, source, dest) in enumerate(waiting):
+        car.assign(Passenger(Request(0, name, source, dest), 50 + index, car_id))
+    return car
+
+
+def view_of(*cars: Elevator, now: int = 0, floors: int = 10, capacity: int = 6) -> FleetView:
+    return fleet_view(list(cars), now, floors, capacity, Forecaster(list(cars), next_order=100))

@@ -4,10 +4,10 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from elevator_sim.config import SimConfig
-from elevator_sim.elevators.base import Elevator
 from elevator_sim.elevators.factory import build_fleet
+from elevator_sim.forecast import Forecaster
 from elevator_sim.requests import Passenger, Request, validate_requests
-from elevator_sim.schedulers.base import CarView, FleetView, Scheduler
+from elevator_sim.schedulers.base import Scheduler, fleet_view
 from elevator_sim.schedulers.registry import make_scheduler
 
 
@@ -38,21 +38,6 @@ def default_max_ticks(requests: Sequence[Request], floors: int) -> int:
     return last_request + 4 * (len(requests) + 1) * (floors - 1)
 
 
-def _snapshot(fleet: Sequence[Elevator], tick: int, config: SimConfig) -> FleetView:
-    cars = tuple(
-        CarView(
-            car.car_id,
-            car.position,
-            car.direction,
-            len(car.riders),
-            car.waiting_count,
-            car.can_serve,
-        )
-        for car in fleet
-    )
-    return FleetView(tick, config.floors, config.capacity, cars)
-
-
 def simulate(
     requests: Sequence[Request], config: SimConfig, scheduler: Scheduler | None = None
 ) -> SimulationResult:
@@ -61,6 +46,7 @@ def simulate(
     chooser = scheduler if scheduler is not None else make_scheduler(config.algorithm)
     fleet = build_fleet(config)
     cars = {car.car_id: car for car in fleet}
+    forecaster = Forecaster(fleet)
     max_ticks = config.max_ticks or default_max_ticks(ordered, config.floors)
     passengers: list[Passenger] = []
     positions: list[tuple[int, ...]] = []
@@ -69,13 +55,14 @@ def simulate(
     while True:
         while len(passengers) < len(ordered) and ordered[len(passengers)].time == tick:
             request = ordered[len(passengers)]
-            view = _snapshot(fleet, tick, config)
+            view = fleet_view(fleet, tick, config.floors, config.capacity, forecaster)
             car_id = chooser.assign(request, view)
             if car_id not in {car.car_id for car in view.eligible(request)}:
                 raise SchedulerError(f"{chooser.name} chose car {car_id} for {request.id}")
             passenger = Passenger(request, len(passengers), car_id)
             passengers.append(passenger)
             cars[car_id].assign(passenger)
+            forecaster.confirm(car_id, request)
 
         for car in fleet:
             car.exchange(tick)
@@ -89,7 +76,7 @@ def simulate(
                 f"stalled at tick {tick}: {len(ordered) - delivered} passengers unfinished"
             )
 
-        view = _snapshot(fleet, tick, config)
+        view = fleet_view(fleet, tick, config.floors, config.capacity, forecaster)
         for car, car_view in zip(fleet, view.cars, strict=True):
             car.move(chooser.idle_target(car_view, view))
         tick += 1

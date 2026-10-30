@@ -39,6 +39,12 @@ class Elevator(ABC):
         return bool(self.riders or self._waiting)
 
     @property
+    def passengers(self) -> list[Passenger]:
+        """Riders first, then waiting passengers by floor."""
+        waiting = [p for floor in self._waiting_floors for p in self._waiting[floor]]
+        return [*self.riders, *waiting]
+
+    @property
     def waiting_count(self) -> int:
         return sum(len(queue) for queue in self._waiting.values())
 

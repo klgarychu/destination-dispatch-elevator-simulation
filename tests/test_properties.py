@@ -4,12 +4,10 @@ import hypothesis.strategies as st
 from hypothesis import HealthCheck, given, settings
 from hypothesis.strategies import DrawFn
 
-from elevator_sim.config import SimConfig
-from elevator_sim.engine import simulate
+from elevator_sim.config import ALGORITHMS, SimConfig
+from elevator_sim.engine import SimulationResult, simulate
 from elevator_sim.requests import Request
 from helpers import assert_rules_hold
-
-ALGORITHMS = ("round_robin",)
 
 
 @st.composite
@@ -51,3 +49,28 @@ def test_tst14_same_input_gives_the_same_run(scenario: tuple[SimConfig, list[Req
 
     assert first.positions == second.positions
     assert first.passengers == second.passengers
+
+
+@settings(max_examples=150, deadline=None, suppress_health_check=[HealthCheck.too_slow])
+@given(scenarios(), st.integers(0, 60), st.integers(0, 10_000))
+def test_tst06_later_requests_never_change_earlier_assignments(
+    scenario: tuple[SimConfig, list[Request]], cut: int, salt: int
+) -> None:
+    config, requests = scenario
+    known = [r for r in requests if r.time <= cut]
+    changed = [
+        Request(r.time, r.id, r.dest, r.source) if (salt + index) % 2 else r
+        for index, r in enumerate(r for r in requests if r.time > cut)
+    ]
+
+    full = simulate(requests, config)
+    removed = simulate(known, config)
+    altered = simulate(known + changed, config)
+
+    def assignments(run: SimulationResult) -> dict[str, int]:
+        return {p.request.id: p.car_id for p in run.passengers if p.request.time <= cut}
+
+    assert assignments(full) == assignments(removed) == assignments(altered)
+
+    shared = min(cut + 1, len(full.positions), len(removed.positions), len(altered.positions))
+    assert full.positions[:shared] == removed.positions[:shared] == altered.positions[:shared]
