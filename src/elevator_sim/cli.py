@@ -8,12 +8,15 @@ from pathlib import Path
 
 from elevator_sim.config import ConfigError, SimConfig, load_config
 from elevator_sim.engine import SimulationStalledError, simulate
+from elevator_sim.experiment import file_tasks, run_suite, suite_tasks
 from elevator_sim.output import format_summary, summary_data, write_run
 from elevator_sim.requests import InputValidationError, load_requests
 from elevator_sim.workload import (
     BUILDINGS,
     RATES_FILE,
+    SEEDS,
     calibrate,
+    ensure_inputs,
     generate_requests,
     write_requests,
     write_suite,
@@ -60,6 +63,34 @@ def _generate(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _compare(args: argparse.Namespace) -> int:
+    if args.suite:
+        if args.stage not in ("all", "1"):
+            raise ConfigError("Stage 2 arrives in Phase 4")
+        ensure_inputs(args.inputs, (SEEDS[0],) if args.quick else SEEDS)
+        tasks = suite_tasks(args.inputs, args.quick)
+    elif args.requests:
+        config = load_config(args.config) if args.config else SimConfig()
+        building = args.config.stem if args.config else "custom"
+        tasks = file_tasks(args.requests, config, building)
+    else:
+        raise ConfigError("compare needs --suite, or --requests with a file")
+    stalled = run_suite(tasks, args.out, args.workers)
+    print(f"Finished {len(tasks) - len(stalled)} of {len(tasks)} runs. Results are in {args.out}")
+    if stalled:
+        print(f"error: {len(stalled)} runs reached max_ticks", file=sys.stderr)
+        return EXIT_STALLED
+    return EXIT_OK
+
+
+def _charts(args: argparse.Namespace) -> int:
+    # Imported here because the simulator must run without matplotlib installed.
+    from elevator_sim.charts import write_charts
+
+    print(f"Wrote {len(write_charts(args.stats, args.out))} charts to {args.out}")
+    return EXIT_OK
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="elevator_sim")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -87,6 +118,22 @@ def _parser() -> argparse.ArgumentParser:
     generate.add_argument("--out", type=Path)
     generate.add_argument("--workers", type=int, default=12)
     generate.set_defaults(handler=_generate)
+
+    compare = commands.add_parser("compare", help="run every configuration")
+    compare.add_argument("--suite", action="store_true")
+    compare.add_argument("--requests", type=Path)
+    compare.add_argument("--config", type=Path)
+    compare.add_argument("--stage", default="all")
+    compare.add_argument("--quick", action="store_true")
+    compare.add_argument("--inputs", type=Path, default=Path("data/generated"))
+    compare.add_argument("--workers", type=int, default=12)
+    compare.add_argument("--out", type=Path, required=True)
+    compare.set_defaults(handler=_compare)
+
+    charts = commands.add_parser("charts", help="draw charts from saved statistics")
+    charts.add_argument("--stats", type=Path, required=True)
+    charts.add_argument("--out", type=Path, required=True)
+    charts.set_defaults(handler=_charts)
     return parser
 
 

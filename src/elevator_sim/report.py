@@ -1,0 +1,103 @@
+"""report.md: summary tables in fixed order. It states numbers and passes no judgement (R-31)."""
+
+import statistics
+from collections.abc import Sequence
+from typing import Any
+
+from elevator_sim.config import ALGORITHMS
+from elevator_sim.workload import BUILDINGS, LOADS, PATTERNS
+
+_COLUMNS = (
+    ("Mean total", "total_mean"),
+    ("Mean wait", "wait_mean"),
+    ("p95 wait", "wait_p95"),
+    ("Max wait", "wait_max"),
+    ("Jain (wait)", "jain_wait"),
+    ("Left behind", "times_left_behind"),
+)
+
+
+def _place(options: Sequence[str], value: str) -> int:
+    """A value's fixed display position. Anything unlisted, such as custom input, goes last."""
+    return options.index(value) if value in options else len(options)
+
+
+def _group_key(row: dict[str, Any]) -> tuple[int, str, int, str, int, str]:
+    building, pattern, load = row["building"], row["pattern"], row["load"]
+    return (
+        _place(BUILDINGS, building),
+        building,
+        _place(list(PATTERNS), pattern),
+        pattern,
+        _place(list(LOADS), load),
+        load,
+    )
+
+
+def _cell(values: Sequence[float]) -> str:
+    return f"{statistics.fmean(values):.2f} ({min(values):.2f} to {max(values):.2f})"
+
+
+def _table(rows: Sequence[dict[str, Any]]) -> list[str]:
+    headers = ["Algorithm", "Behaviour", "Seeds", *[title for title, _ in _COLUMNS]]
+    lines = [
+        "| " + " | ".join(headers) + " |",
+        "| " + " | ".join("---" for _ in headers) + " |",
+    ]
+    configs = dict.fromkeys(row["config_id"] for row in rows)
+    ordered = sorted(
+        configs,
+        key=lambda config: _place(
+            ALGORITHMS, next(r["algorithm"] for r in rows if r["config_id"] == config)
+        ),
+    )
+    for config in ordered:
+        members = [row for row in rows if row["config_id"] == config]
+        cells = [
+            f"`{members[0]['algorithm']}`",
+            f"`{members[0]['behaviour']}`",
+            str(len(members)),
+        ]
+        for _, key in _COLUMNS:
+            values = [member[key] for member in members if member[key] is not None]
+            cells.append(_cell(values) if values else "no passengers")
+        lines.append("| " + " | ".join(cells) + " |")
+    return lines
+
+
+def render_report(rows: Sequence[dict[str, Any]]) -> str:
+    inputs = {(r["building"], r["pattern"], r["load"], r["seed"]) for r in rows}
+    seeds = sorted({r["seed"] for r in rows})
+    unguarded = sum(1 for r in rows if r["unguarded"])
+    lines = [
+        "# Simulation report",
+        "",
+        f"Runs: {len(rows)}. Inputs: {len(inputs)}. "
+        f"Configurations: {len({r['config_id'] for r in rows})}. "
+        f"Seeds: {', '.join(str(seed) for seed in seeds)}.",
+        "",
+        f"Unguarded runs: {unguarded} of {len(rows)}. Unguarded runs have no protection against "
+        "long waits beyond the inputs being finite.",
+        "",
+        "Configurations appear in a fixed order. This report makes no judgement between them: "
+        "a person reads the tables and charts and decides.",
+        "",
+        "Each cell shows the mean across seeds, then the range across seeds in brackets. "
+        "Differences smaller than that range are noise.",
+        "",
+        "Total time is wait time plus a fixed distance, so differences in mean total time are "
+        "exactly the differences in mean wait time.",
+    ]
+    groups: dict[tuple[int, str, int, str, int, str], list[dict[str, Any]]] = {}
+    for row in rows:
+        groups.setdefault(_group_key(row), []).append(row)
+    for key in sorted(groups):
+        members = groups[key]
+        first = members[0]
+        lines += [
+            "",
+            f"## {first['building']}, {first['pattern']}, {first['load']}",
+            "",
+            *_table(members),
+        ]
+    return "\n".join(lines) + "\n"

@@ -132,6 +132,14 @@ def write_suite(out: Path, seeds: Sequence[int] = SEEDS) -> int:
     return count
 
 
+def ensure_inputs(out: Path, seeds: Sequence[int] = SEEDS) -> None:
+    """Write any suite inputs that are missing, without touching the ones already there."""
+    rates = load_rates()
+    for spec in suite_inputs(seeds):
+        if not (out / spec.name).exists():
+            write_requests(out / spec.name, input_requests(spec, rates))
+
+
 def undelivered_at(result: SimulationResult, tick: int) -> int:
     return sum(1 for p in result.passengers if p.dropoff_tick is None or p.dropoff_tick > tick)
 

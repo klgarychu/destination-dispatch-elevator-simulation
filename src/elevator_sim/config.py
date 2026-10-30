@@ -61,6 +61,11 @@ class SimConfig:
             raise ConfigError(f"max_ticks must be at least 1, not {self.max_ticks}")
 
 
+def config_id(config: SimConfig) -> str:
+    """A readable id with four stable parts: algorithm, behaviour, guard and assignment rule."""
+    return f"{config.algorithm}__{config.behaviour}__none__none"
+
+
 def settings_record(config: SimConfig) -> dict[str, str | float | bool | None]:
     """All dispatch settings by name. Fields for later phases hold their off value."""
     return {
