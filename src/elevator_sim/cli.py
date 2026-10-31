@@ -89,7 +89,11 @@ def _charts(args: argparse.Namespace) -> int:
     # Imported here because the simulator must run without matplotlib installed.
     from elevator_sim.charts import write_charts
 
-    print(f"Wrote {len(write_charts(args.stats, args.out))} charts to {args.out}")
+    written = write_charts(args.stats, args.out)
+    if written:
+        print(f"Wrote {len(written)} charts to {args.out}")
+    else:
+        print("Wrote no charts: this comparison has no passengers")
     return EXIT_OK
 
 

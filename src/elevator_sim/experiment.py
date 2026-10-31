@@ -22,7 +22,14 @@ from typing import Any
 from elevator_sim.config import ALGORITHMS, SimConfig, check_workers, config_id, settings_record
 from elevator_sim.engine import SimulationStalledError, simulate
 from elevator_sim.metrics import run_stats, total_time, wait_time
-from elevator_sim.output import MANIFEST_FILE, write_csv, write_json, write_manifest, write_run
+from elevator_sim.output import (
+    MANIFEST_FILE,
+    Manifest,
+    write_csv,
+    write_json,
+    write_manifest,
+    write_run,
+)
 from elevator_sim.report import render_report
 from elevator_sim.requests import load_requests
 from elevator_sim.workload import SEEDS, building_config, suite_inputs
@@ -297,7 +304,9 @@ def aggregate(rows: Sequence[dict[str, Any]], keys: Sequence[str]) -> list[dict[
     return aggregated
 
 
-def write_statistics(rows: Sequence[dict[str, Any]], out: Path) -> None:
+def write_statistics(
+    rows: Sequence[dict[str, Any]], out: Path, not_finished: Sequence[str] = ()
+) -> None:
     write_csv(
         out / "simulation_stats.csv",
         STATS_COLUMNS,
@@ -326,7 +335,7 @@ def write_statistics(rows: Sequence[dict[str, Any]], out: Path) -> None:
         )
 
     with (out / "report.md").open("w", encoding="utf-8", newline="") as file:
-        file.write(render_report(rows))
+        file.write(render_report(rows, not_finished))
 
 
 def run_suite(tasks: Sequence[Task], out: Path, workers: int) -> SuiteOutcome:
@@ -336,6 +345,10 @@ def run_suite(tasks: Sequence[Task], out: Path, workers: int) -> SuiteOutcome:
     (out / MANIFEST_FILE).unlink(missing_ok=True)
     outcome = run_tasks(tasks, out, workers)
     rows = load_rows(tasks, out)
-    write_statistics(rows, out)
-    write_manifest(out, [row["run_id"] for row in rows])
+    finished = [row["run_id"] for row in rows]
+    done = set(finished)
+    # In task order, not the order runs stalled in, so the files stay byte-identical.
+    not_finished = [task.run_id for task in tasks if task.run_id not in done]
+    write_statistics(rows, out, not_finished)
+    write_manifest(out, Manifest(finished, not_finished))
     return outcome

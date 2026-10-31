@@ -344,10 +344,27 @@ def test_every_output_leaves_out_a_configuration_with_no_finished_runs(tmp_path:
     run_suite([finished[0], replace(finished[1], config=stalled)], out, workers=1)
 
     assert column(out, "algorithm") == {"eta"}
-    assert read_manifest(out) == ["eta"]
+    assert read_manifest(out).runs == ["eta"]
     assert [path.name for path in (out / "by_config").iterdir()] == [
         "eta__min_time__none__none.csv"
     ]
+
+
+def test_a_stalled_run_is_recorded_as_not_finished_in_task_order(tmp_path: Path) -> None:
+    file = tmp_path / "input.csv"
+    file.write_text(SIX_ROWS, encoding="utf-8")
+    out = tmp_path / "out"
+    limits = {"zone_based": 1, "eta": None, "round_robin": 1}
+    tasks = [
+        Task(name, SimConfig(algorithm=name, max_ticks=limit), 1, "b", "p", "l", 1, file)
+        for name, limit in limits.items()
+    ]
+
+    run_suite(tasks, out, workers=1)
+
+    assert read_manifest(out).runs == ["eta"]
+    assert read_manifest(out).not_finished == ["zone_based", "round_robin"]
+    assert "`zone_based`, `round_robin`" in (out / "report.md").read_text(encoding="utf-8")
 
 
 def test_a_refused_worker_count_leaves_the_last_comparison_intact(tmp_path: Path) -> None:
@@ -358,7 +375,7 @@ def test_a_refused_worker_count_leaves_the_last_comparison_intact(tmp_path: Path
     )
 
     assert code == 2
-    assert read_manifest(out)
+    assert read_manifest(out).runs
 
 
 def test_compare_says_how_many_runs_it_ran_and_how_many_it_reused(

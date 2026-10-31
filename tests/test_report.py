@@ -74,6 +74,19 @@ def test_report_says_which_runs_were_unguarded() -> None:
     assert "Unguarded runs: 0 of 1" in render_report([row("eta", 1.0, unguarded=False)])
 
 
+def test_report_says_a_comparison_is_incomplete_and_names_the_missing_runs() -> None:
+    rows = rows_scrambled_by_value()
+
+    report = render_report(rows, not_finished=["zone_light", "eta_heavy"])
+
+    assert "Incomplete comparison: 2 of 7 runs didn't finish" in report
+    assert "`zone_light`, `eta_heavy`" in report
+
+
+def test_report_has_no_incomplete_notice_when_every_run_finished() -> None:
+    assert "Incomplete" not in render_report(rows_scrambled_by_value())
+
+
 def test_report_has_one_section_per_building_pattern_and_load() -> None:
     other = {**row("eta", 1.0), "load": "light"}
 

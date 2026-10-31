@@ -142,8 +142,30 @@ def _panel_label(axes: Axes, text: str) -> None:
     axes.set_title(text, fontsize=9, color=_SECONDARY_INK, loc="left")
 
 
+def _has_passengers(row: dict[str, str]) -> bool:
+    """An input with no passengers has no statistics, which leave these cells blank."""
+    return bool(row["total_mean_mean"])
+
+
+def _no_passengers(axes: Axes) -> None:
+    axes.text(
+        0.5,
+        0.5,
+        "no passengers",
+        transform=axes.transAxes,
+        ha="center",
+        va="center",
+        fontsize=9,
+        color=_SECONDARY_INK,
+    )
+
+
 def _pick(rows: Sequence[dict[str, str]], pattern: str, load: str) -> list[dict[str, str]]:
-    return [row for row in rows if row["pattern"] == pattern and row["load"] == load]
+    return [
+        row
+        for row in rows
+        if row["pattern"] == pattern and row["load"] == load and _has_passengers(row)
+    ]
 
 
 def _algorithm_comparison(rows: Sequence[dict[str, str]], path: Path) -> None:
@@ -159,7 +181,10 @@ def _algorithm_comparison(rows: Sequence[dict[str, str]], path: Path) -> None:
             _panel_label(axis, f"{pattern}, {load}")
             axis.set_xticks([])
             axis.set_xlim(-0.6, len(algorithms) - 0.4)
-            for row in _pick(rows, pattern, load):
+            picked = _pick(rows, pattern, load)
+            if not picked:
+                _no_passengers(axis)
+            for row in picked:
                 name = _algorithm(row)
                 place = algorithms.index(name)
                 axis.plot(
@@ -178,7 +203,14 @@ def _algorithm_comparison(rows: Sequence[dict[str, str]], path: Path) -> None:
                     markeredgecolor=_SURFACE,
                     markeredgewidth=1,
                 )
-        top = max(float(row["total_mean_max"]) for row in rows if row["load"] == load)
+        top = max(
+            (
+                float(row["total_mean_max"])
+                for row in rows
+                if row["load"] == load and _has_passengers(row)
+            ),
+            default=1.0,
+        )
         axes[row_index][0].set_ylim(0, top * 1.08)
         axes[row_index][0].set_ylabel("Ticks", fontsize=8, color=_SECONDARY_INK)
     _finish(
@@ -229,16 +261,14 @@ def _distributions(stats: Path, run_ids: Sequence[str], building: str, path: Pat
             axis = axes[row_index][column]
             _style_axes(axis)
             _panel_label(axis, f"{measure} time, {load}")
-            boxes = [
-                _box(pooled[(load, name)][measure], name)
-                for name in algorithms
-                if pooled[(load, name)][measure]
-            ]
-            if not boxes:
+            present = [name for name in algorithms if pooled.get((load, name), {}).get(measure)]
+            if not present:
+                axis.set_xticks([])
+                _no_passengers(axis)
                 continue
             drawn = axis.bxp(
-                boxes,
-                positions=range(len(boxes)),
+                [_box(pooled[(load, name)][measure], name) for name in present],
+                positions=[algorithms.index(name) for name in present],
                 widths=0.35,
                 patch_artist=True,
                 showfliers=False,
@@ -247,7 +277,7 @@ def _distributions(stats: Path, run_ids: Sequence[str], building: str, path: Pat
                 showcaps=False,
                 boxprops={"linewidth": 0},
             )
-            for box, name in zip(drawn["boxes"], algorithms, strict=True):
+            for box, name in zip(drawn["boxes"], present, strict=True):
                 box.set_facecolor(COLOURS[name])
             axis.set_xticks([])
             axis.set_yscale("symlog", linthresh=10)
@@ -289,7 +319,10 @@ def _fairness_vs_efficiency(rows: Sequence[dict[str, str]], path: Path) -> None:
             axis = axes[row_index][column]
             _panel_label(axis, f"{pattern}, {load}")
             axis.grid(axis="x", color=_GRID, linewidth=0.8)
-            for row in _pick(rows, pattern, load):
+            picked = _pick(rows, pattern, load)
+            if not picked:
+                _no_passengers(axis)
+            for row in picked:
                 name = _algorithm(row)
                 x, y = float(row["total_mean_mean"]), float(row["wait_p95_mean"])
                 axis.plot(
@@ -337,11 +370,13 @@ def _load_response(rows: Sequence[dict[str, str]], path: Path) -> None:
         axis.yaxis.set_major_locator(LogLocator(base=10, subs=(1, 2, 5)))
         axis.yaxis.set_major_formatter(_WHOLE_TICKS)
         axis.yaxis.set_minor_locator(NullLocator())
+        if not any(row["pattern"] == pattern and _has_passengers(row) for row in rows):
+            _no_passengers(axis)
         for name in algorithms:
             series = {
                 row["load"]: row
                 for row in rows
-                if row["pattern"] == pattern and _algorithm(row) == name
+                if row["pattern"] == pattern and _algorithm(row) == name and _has_passengers(row)
             }
             places = [index for index, load in enumerate(loads) if load in series]
             members = [series[loads[index]] for index in places]
@@ -411,13 +446,27 @@ def _car_movement(stats: Path, run_ids: Sequence[str], building: str, path: Path
 
 
 def write_charts(stats: Path, out: Path) -> list[Path]:
-    """Draw every chart from the same runs as the statistics, replacing any earlier charts."""
+    """Draw every chart from the same runs as the statistics, replacing any earlier charts.
+
+    An incomplete comparison is refused, not drawn with gaps. Stalled runs tend to be the hardest
+    ones, so a partial chart would flatter the algorithm that stalled.
+    """
     rows = _read_aggregates(stats)
-    run_ids = read_manifest(stats)
+    manifest = read_manifest(stats)
+    if manifest.not_finished:
+        count = len(manifest.not_finished)
+        names = ", ".join(manifest.not_finished[:5])
+        raise ConfigError(
+            f"charts need a complete comparison, but runs in {stats} didn't finish ({count} in "
+            f"all, including {names}). See report.md"
+        )
+    run_ids = manifest.runs
     out.mkdir(parents=True, exist_ok=True)
     for name in TITLES:
         for earlier in out.glob(f"{name}_*.png"):
             earlier.unlink()
+    if not any(_has_passengers(row) for row in rows):
+        return []
     written = []
     for building in dict.fromkeys(row["building"] for row in rows):
         members = [row for row in rows if row["building"] == building]

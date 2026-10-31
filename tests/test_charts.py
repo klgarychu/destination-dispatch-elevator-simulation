@@ -14,6 +14,7 @@ from elevator_sim.output import MANIFEST_FILE, read_manifest
 SIX_ROWS = "time,id,source,dest\n0,a,1,5\n0,b,5,1\n2,c,3,8\n4,d,8,2\n9,e,1,9\n12,f,6,4\n"
 ONE_ROW = "time,id,source,dest\n0,a,1,2\n"
 TWO_ROWS = "time,id,source,dest\n0,b,1,3\n0,c,1,4\n"
+EMPTY = "time,id,source,dest\n"
 
 
 @pytest.fixture(scope="module")
@@ -65,7 +66,7 @@ def draw(out: Path, charts: Path) -> int:
 def passengers_charted(out: Path) -> dict[tuple[str, str], int]:
     from elevator_sim.charts import pooled_times
 
-    pooled = pooled_times(out, read_manifest(out), "custom")
+    pooled = pooled_times(out, read_manifest(out).runs, "custom")
     return {key: len(times["wait"]) for key, times in pooled.items()}
 
 
@@ -85,7 +86,7 @@ def test_tst17_chart_data_holds_exactly_the_runs_in_the_report(tmp_path: Path) -
 
     with (out / "simulation_stats.csv").open(encoding="utf-8", newline="") as file:
         rows = list(csv.DictReader(file))
-    assert read_manifest(out) == [row["run_id"] for row in rows]
+    assert read_manifest(out).runs == [row["run_id"] for row in rows]
     assert passengers_charted(out) == {("custom", name): 2 for name in ALGORITHMS}
 
 
@@ -188,6 +189,141 @@ def test_tst17_an_interrupted_compare_leaves_no_old_run_list_beside_changed_runs
         compare(file, out)
 
     assert draw(out, tmp_path / "charts") == 2
+
+
+def uniform_task(
+    run_id: str, algorithm: str, load: str, file: Path, seed: int = 1, max_ticks: int | None = None
+) -> Task:
+    config = SimConfig(algorithm=algorithm, max_ticks=max_ticks)
+    return Task(run_id, config, 1, "custom", "uniform", load, seed, file)
+
+
+def test_tst17_charts_write_nothing_for_a_comparison_with_no_passengers(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    out, charts = tmp_path / "out", tmp_path / "charts"
+    compare(write_input(tmp_path, "busy.csv", SIX_ROWS), out)
+    assert draw(out, charts) == 0
+    compare(write_input(tmp_path, "empty.csv", EMPTY), out)
+    capsys.readouterr()
+
+    assert draw(out, charts) == 0
+
+    assert "no passengers" in capsys.readouterr().out
+    assert list(charts.glob("*.png")) == []
+
+
+def test_tst17_charts_refuse_a_comparison_with_a_run_that_did_not_finish(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    out, charts = tmp_path / "out", tmp_path / "charts"
+    file = write_input(tmp_path, "input.csv", SIX_ROWS)
+    run_suite(
+        [
+            uniform_task("eta_light", "eta", "light", file),
+            uniform_task("rr_light", "round_robin", "light", file),
+            uniform_task("eta_heavy", "eta", "heavy", file),
+            uniform_task("rr_heavy", "round_robin", "heavy", file, max_ticks=1),
+        ],
+        out,
+        1,
+    )
+
+    assert draw(out, charts) == 2
+
+    assert "rr_heavy" in capsys.readouterr().err
+    assert not charts.exists()
+
+
+def test_tst17_charts_refuse_a_comparison_missing_a_whole_algorithm(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    out = tmp_path / "out"
+    file = write_input(tmp_path, "input.csv", SIX_ROWS)
+    run_suite(
+        [
+            uniform_task(name, name, "light", file, max_ticks=1 if name == "eta" else None)
+            for name in ALGORITHMS
+        ],
+        out,
+        1,
+    )
+
+    assert draw(out, tmp_path / "charts") == 2
+
+    assert "eta" in capsys.readouterr().err
+
+
+def test_tst17_charts_refuse_a_comparison_with_fewer_seeds_for_one_algorithm(
+    tmp_path: Path,
+) -> None:
+    out = tmp_path / "out"
+    file = write_input(tmp_path, "input.csv", SIX_ROWS)
+    tasks = [uniform_task(f"eta{seed}", "eta", "light", file, seed) for seed in (1, 2, 3)]
+    tasks += [
+        uniform_task(f"rr{seed}", "round_robin", "light", file, seed, 1 if seed > 1 else None)
+        for seed in (1, 2, 3)
+    ]
+    run_suite(tasks, out, 1)
+
+    assert draw(out, tmp_path / "charts") == 2
+
+
+def test_tst17_refused_charts_leave_earlier_charts_in_place(tmp_path: Path) -> None:
+    out, charts = tmp_path / "out", tmp_path / "charts"
+    file = write_input(tmp_path, "input.csv", SIX_ROWS)
+    run_suite([uniform_task(name, name, "light", file) for name in ALGORITHMS], out, 1)
+    assert draw(out, charts) == 0
+    earlier = sorted(path.name for path in charts.glob("*.png"))
+    run_suite([uniform_task("eta", "eta", "light", file, max_ticks=1)], out, 1)
+
+    assert draw(out, charts) == 2
+
+    assert sorted(path.name for path in charts.glob("*.png")) == earlier
+
+
+def test_tst17_charts_draw_the_rest_when_one_input_has_no_passengers(tmp_path: Path) -> None:
+    out, charts = tmp_path / "out", tmp_path / "charts"
+    busy = write_input(tmp_path, "busy.csv", SIX_ROWS)
+    empty = write_input(tmp_path, "empty.csv", EMPTY)
+    tasks = [uniform_task(f"{name}_busy", name, "light", busy) for name in ALGORITHMS]
+    tasks += [uniform_task(f"{name}_empty", name, "heavy", empty) for name in ALGORITHMS]
+    run_suite(tasks, out, 1)
+
+    assert draw(out, charts) == 0
+
+    assert len(list(charts.glob("*.png"))) == 4
+
+
+def test_tst17_charts_draw_a_finished_comparison_with_uneven_combinations(tmp_path: Path) -> None:
+    out, charts = tmp_path / "out", tmp_path / "charts"
+    file = write_input(tmp_path, "input.csv", SIX_ROWS)
+    run_suite(
+        [
+            uniform_task("eta_light", "eta", "light", file),
+            uniform_task("rr_light", "round_robin", "light", file),
+            uniform_task("eta_heavy", "eta", "heavy", file),
+        ],
+        out,
+        1,
+    )
+
+    assert draw(out, charts) == 0
+
+    assert (charts / "distributions_custom.png").exists()
+
+
+@pytest.mark.parametrize("contents", ["not json", '["an", "old", "list"]', '{"runs": []}'])
+def test_tst17_charts_stop_on_a_run_list_they_cannot_read(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], contents: str
+) -> None:
+    out = tmp_path / "out"
+    compare(write_input(tmp_path, "input.csv", SIX_ROWS), out)
+    (out / MANIFEST_FILE).write_text(contents, encoding="utf-8")
+
+    assert draw(out, tmp_path / "charts") == 2
+
+    assert "run compare" in capsys.readouterr().err
 
 
 def test_tst18_each_algorithm_has_one_distinct_colour_and_marker() -> None:

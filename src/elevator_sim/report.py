@@ -65,13 +65,26 @@ def _table(rows: Sequence[dict[str, Any]]) -> list[str]:
     return lines
 
 
-def render_report(rows: Sequence[dict[str, Any]]) -> str:
+def _incomplete_notice(finished: int, not_finished: Sequence[str]) -> list[str]:
+    if not not_finished:
+        return []
+    names = ", ".join(f"`{run_id}`" for run_id in not_finished)
+    return [
+        f"**Incomplete comparison: {len(not_finished)} of {finished + len(not_finished)} runs "
+        "didn't finish, so the configurations below may not have run the same inputs.** "
+        f"Missing: {names}.",
+        "",
+    ]
+
+
+def render_report(rows: Sequence[dict[str, Any]], not_finished: Sequence[str] = ()) -> str:
     inputs = {(r["building"], r["pattern"], r["load"], r["seed"]) for r in rows}
     seeds = sorted({r["seed"] for r in rows})
     unguarded = sum(1 for r in rows if r["unguarded"])
     lines = [
         "# Simulation report",
         "",
+        *_incomplete_notice(len(rows), not_finished),
         f"Runs: {len(rows)}. Inputs: {len(inputs)}. "
         f"Configurations: {len({r['config_id'] for r in rows})}. "
         f"Seeds: {', '.join(str(seed) for seed in seeds)}.",

@@ -2,7 +2,7 @@
 
 import csv
 import json
-from collections.abc import Sequence
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
@@ -45,17 +45,27 @@ def write_json(path: Path, data: object) -> None:
         file.write(json.dumps(data, indent=2) + "\n")
 
 
-def write_manifest(out: Path, run_ids: Sequence[str]) -> None:
-    write_json(out / MANIFEST_FILE, list(run_ids))
+@dataclass(frozen=True, slots=True)
+class Manifest:
+    """The runs a folder's statistics cover, and any that were asked for but didn't finish."""
+
+    runs: list[str]
+    not_finished: list[str]
 
 
-def read_manifest(out: Path) -> list[str]:
-    """The runs in the comparison that made this folder's statistics, and no others."""
+def write_manifest(out: Path, manifest: Manifest) -> None:
+    write_json(out / MANIFEST_FILE, asdict(manifest))
+
+
+def read_manifest(out: Path) -> Manifest:
     path = out / MANIFEST_FILE
     if not path.exists():
         raise ConfigError(f"no finished comparison at {path}: run compare first")
-    run_ids: list[str] = json.loads(path.read_text(encoding="utf-8"))
-    return run_ids
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return Manifest(data["runs"], data["not_finished"])
+    except json.JSONDecodeError, KeyError, TypeError:
+        raise ConfigError(f"can't read {path}: run compare again") from None
 
 
 def _rounded(stats: TimeStats | None) -> dict[str, float | int] | None:
