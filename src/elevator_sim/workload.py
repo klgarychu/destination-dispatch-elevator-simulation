@@ -140,8 +140,18 @@ def ensure_inputs(out: Path, seeds: Sequence[int] = SEEDS) -> None:
             write_requests(out / spec.name, input_requests(spec, rates))
 
 
-def undelivered_at(result: SimulationResult, tick: int) -> int:
-    return sum(1 for p in result.passengers if p.dropoff_tick is None or p.dropoff_tick > tick)
+def backlog_at(result: SimulationResult, tick: int) -> int:
+    """Passengers who have made their request but haven't been delivered by this tick."""
+    return sum(
+        1
+        for p in result.passengers
+        if p.request.time <= tick and (p.dropoff_tick is None or p.dropoff_tick > tick)
+    )
+
+
+def backlog_growth(result: SimulationResult) -> int:
+    """How much the backlog grew over the second half of the arrivals."""
+    return backlog_at(result, ARRIVAL_TICKS) - backlog_at(result, ARRIVAL_TICKS // 2)
 
 
 def bisect_highest_rate(passes: Callable[[float], bool]) -> float:
@@ -159,18 +169,22 @@ def bisect_highest_rate(passes: Callable[[float], bool]) -> float:
 
 
 def saturation_rate(building: str, pattern: str) -> float:
-    """Calibrate without a guard, so that inputs stay identical across phases (M6)."""
+    """The highest rate the fleet keeps up with, without a guard, so inputs stay fixed (M6).
+
+    A saturated fleet is one whose backlog keeps growing. The size of the backlog at one tick
+    can't show that, because it includes everyone simply in transit (G15).
+    """
     config = replace(
         building_config(building), algorithm="marginal_insertion", behaviour="min_time"
     )
 
     def passes(rate: float) -> bool:
-        undelivered = []
+        growth = []
         for seed in CALIBRATION_SEEDS:
             run_seed = input_seed(building, pattern, "calibration", seed)
             requests = generate_requests(pattern, rate, ARRIVAL_TICKS, run_seed, config.floors)
-            undelivered.append(undelivered_at(simulate(requests, config), ARRIVAL_TICKS))
-        return statistics.fmean(undelivered) <= config.elevators * config.capacity
+            growth.append(backlog_growth(simulate(requests, config)))
+        return statistics.fmean(growth) <= config.elevators * config.capacity
 
     return bisect_highest_rate(passes)
 
