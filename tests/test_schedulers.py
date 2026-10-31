@@ -6,9 +6,10 @@ from elevator_sim.boarding.behaviours import make_behaviour
 from elevator_sim.config import ALGORITHMS, SimConfig
 from elevator_sim.elevators.normal import NormalElevator
 from elevator_sim.engine import simulate
+from elevator_sim.forecast import PredictedTrip
 from elevator_sim.requests import Direction, Request
 from elevator_sim.schedulers.eta import Eta
-from elevator_sim.schedulers.marginal_insertion import MarginalInsertion
+from elevator_sim.schedulers.marginal_insertion import MarginalInsertion, marginal_cost
 from elevator_sim.schedulers.nearest_car import NearestCar, suitability
 from elevator_sim.schedulers.registry import make_scheduler
 from elevator_sim.schedulers.round_robin import RoundRobin
@@ -226,6 +227,34 @@ def test_tst11_marginal_insertion_breaks_ties_on_the_lowest_car_number() -> None
 
     assert MarginalInsertion().costs(new, view) == {1: 5, 2: 5, 3: 7}
     assert MarginalInsertion().assign(new, view) == 1
+
+
+def test_tst11_marginal_cost_is_the_new_passengers_time_plus_each_delay() -> None:
+    baseline = {"a": PredictedTrip(0, 1, 10), "b": PredictedTrip(2, 3, 20)}
+    candidate = {
+        "a": PredictedTrip(0, 1, 13),
+        "b": PredictedTrip(2, 3, 20),
+        "new": PredictedTrip(5, 7, 12),
+    }
+
+    # The new passenger totals 7, a arrives 3 ticks later, and b isn't delayed.
+    assert marginal_cost(Request(5, "new", 1, 6), baseline, candidate) == 10
+
+
+@pytest.mark.parametrize(
+    "baseline",
+    [
+        {},
+        {"a": PredictedTrip(0, 1, 10), "delivered": PredictedTrip(0, 1, 5)},
+    ],
+)
+def test_tst11_marginal_cost_refuses_forecasts_of_different_passengers(
+    baseline: dict[str, PredictedTrip],
+) -> None:
+    candidate = {"a": PredictedTrip(0, 1, 10), "new": PredictedTrip(5, 7, 12)}
+
+    with pytest.raises(AssertionError, match="different people"):
+        marginal_cost(Request(5, "new", 1, 6), baseline, candidate)
 
 
 def test_tst11_marginal_insertion_ignores_a_passenger_already_delivered() -> None:

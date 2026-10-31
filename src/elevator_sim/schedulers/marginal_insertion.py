@@ -11,9 +11,15 @@ from elevator_sim.requests import Request
 from elevator_sim.schedulers.base import FleetView, Scheduler
 
 
-def _passenger_time(forecast: Forecast) -> int:
-    """Total time for everyone in a forecast, measured from each request tick."""
-    return sum(trip.dropoff_tick - trip.request_time for trip in forecast.values())
+def marginal_cost(request: Request, baseline: Forecast, candidate: Forecast) -> int:
+    """The new passenger's total time, plus the delay to each passenger already on the car."""
+    assert candidate.keys() - {request.id} == baseline.keys(), "forecasts cover different people"
+    delays = (
+        trip.dropoff_tick - baseline[name].dropoff_tick
+        for name, trip in candidate.items()
+        if name != request.id
+    )
+    return candidate[request.id].dropoff_tick - request.time + sum(delays)
 
 
 class MarginalInsertion(Scheduler):
@@ -21,8 +27,11 @@ class MarginalInsertion(Scheduler):
 
     def costs(self, request: Request, view: FleetView) -> dict[int, int]:
         return {
-            car.car_id: _passenger_time(view.candidate_forecast(car.car_id, request))
-            - _passenger_time(view.baseline_forecast(car.car_id))
+            car.car_id: marginal_cost(
+                request,
+                view.baseline_forecast(car.car_id),
+                view.candidate_forecast(car.car_id, request),
+            )
             for car in view.eligible(request)
         }
 
