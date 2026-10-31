@@ -1,13 +1,13 @@
 # Measured saturation arrival rates, in passengers per tick (spec section 12.4, M6).
 
 [baseline]
-uniform = 3.71
-up_peak = 1.55
-down_peak = 1.59
-lunch = 2.71
+uniform = 3.79
+up_peak = 1.62
+down_peak = 1.97
+lunch = 2.83
 
 [tall]
-uniform = 2.3
-up_peak = 0.99
-down_peak = 1.13
-lunch = 1.56
+uniform = 2.42
+up_peak = 1.02
+down_peak = 1.21
+lunch = 1.62
