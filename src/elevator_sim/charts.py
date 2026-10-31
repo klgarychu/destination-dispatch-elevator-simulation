@@ -18,6 +18,7 @@ import matplotlib.pyplot as plt  # the backend must be set first
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
+from matplotlib.ticker import FixedLocator, FuncFormatter, LogLocator, NullLocator
 
 from elevator_sim.config import ALGORITHMS, ConfigError
 from elevator_sim.metrics import nearest_rank
@@ -44,7 +45,7 @@ TITLES = {
     "load_response": "Mean total time as load rises, by algorithm",
     "car_movement": "Car movement over the first 200 ticks, by algorithm",
 }
-FIXED_DISTANCE_NOTE = "Total time is wait time plus a fixed distance, so both show the same gaps."
+FIXED_DISTANCE_NOTE = "Total time is wait time plus a fixed distance."
 _SPREAD_NOTE = "Lines show the range across seeds. Gaps smaller than that range are noise."
 
 _SURFACE = "#fcfcfb"
@@ -54,6 +55,7 @@ _GRID = "#e1e0d9"
 _AXIS = "#c3c2b7"
 _SAMPLE_INPUT = "up_peak_heavy_s1"
 _CAR_MOVEMENT_TICKS = 200
+_WHOLE_TICKS = FuncFormatter(lambda value, _: f"{value:,.0f}")
 
 
 def fixed_order(algorithms: Iterable[str]) -> list[str]:
@@ -92,7 +94,7 @@ def _finish(
 ) -> None:
     """Title and notes at the top left, with the legend below them."""
     height = figure.get_figheight()
-    figure.text(0.02, 1 - 0.14 / height, title, fontsize=13, weight="semibold", color=_INK)
+    figure.text(0.02, 1 - 0.14 / height, title, fontsize=13, weight="bold", color=_INK)
     figure.text(
         0.02, 1 - 0.36 / height, " ".join(notes), fontsize=9, color=_SECONDARY_INK, va="center"
     )
@@ -108,15 +110,16 @@ def _finish(
         )
         for name in algorithms
     ]
-    figure.legend(
-        handles=handles,
-        loc="upper left",
-        bbox_to_anchor=(0.015, 1 - 0.46 / height),
-        ncols=len(handles),
-        frameon=False,
-        fontsize=9,
-        labelcolor=_SECONDARY_INK,
-    )
+    if handles:
+        figure.legend(
+            handles=handles,
+            loc="upper left",
+            bbox_to_anchor=(0.015, 1 - 0.46 / height),
+            ncols=len(handles),
+            frameon=False,
+            fontsize=9,
+            labelcolor=_SECONDARY_INK,
+        )
     figure.tight_layout(rect=(0, 0, 1, 1 - 0.8 / height))
     figure.savefig(path, dpi=150, facecolor=_SURFACE, metadata={"Software": None})
     plt.close(figure)
@@ -174,7 +177,8 @@ def _algorithm_comparison(rows: Sequence[dict[str, str]], path: Path) -> None:
                     markeredgecolor=_SURFACE,
                     markeredgewidth=1,
                 )
-            axis.set_ylim(bottom=0)
+        top = max(float(row["total_mean_max"]) for row in rows if row["load"] == load)
+        axes[row_index][0].set_ylim(0, top * 1.08)
         axes[row_index][0].set_ylabel("Ticks", fontsize=8, color=_SECONDARY_INK)
     _finish(
         figure,
@@ -231,7 +235,7 @@ def _distributions(stats: Path, building: str, path: Path) -> None:
             drawn = axis.bxp(
                 boxes,
                 positions=range(len(boxes)),
-                widths=0.5,
+                widths=0.35,
                 patch_artist=True,
                 showfliers=False,
                 medianprops={"color": _INK, "linewidth": 1.2},
@@ -242,16 +246,19 @@ def _distributions(stats: Path, building: str, path: Path) -> None:
             for box, name in zip(drawn["boxes"], algorithms, strict=True):
                 box.set_facecolor(COLOURS[name])
             axis.set_xticks([])
-            axis.set_ylim(bottom=0)
-        axes[0][column].set_ylabel("Ticks", fontsize=8, color=_SECONDARY_INK)
-        axes[1][column].set_ylabel("Ticks", fontsize=8, color=_SECONDARY_INK)
+            axis.set_yscale("symlog", linthresh=10)
+            axis.yaxis.set_major_locator(FixedLocator([0, 5, 10, 100, 1000, 10000]))
+            axis.yaxis.set_major_formatter(_WHOLE_TICKS)
+            axis.yaxis.set_minor_locator(NullLocator())
+    for row_index in range(2):
+        axes[row_index][0].set_ylabel("Ticks", fontsize=8, color=_SECONDARY_INK)
     _finish(
         figure,
         path,
         TITLES["distributions"],
         [
-            "Boxes show the 25th to 75th percentile, the bar the median, and the lines the 5th to "
-            "95th. All patterns and seeds are pooled.",
+            "Boxes: 25th to 75th percentile. Bar: median. Lines: 5th to 95th.",
+            "Patterns and seeds are pooled. The axis is log above 10.",
             FIXED_DISTANCE_NOTE,
         ],
         algorithms,
@@ -259,10 +266,10 @@ def _distributions(stats: Path, building: str, path: Path) -> None:
 
 
 def _distribution_figure(loads: int) -> tuple[Figure, Any]:
-    """Two rows, with each load keeping its own axis, because waits differ so much across loads."""
+    """Two rows, sharing one axis, so that every load can be compared directly."""
     plt.rcParams["font.family"] = ["Segoe UI", "DejaVu Sans"]
     return plt.subplots(
-        2, loads, figsize=(2.8 * loads + 0.8, 6.2), squeeze=False, sharey="col", facecolor=_SURFACE
+        2, loads, figsize=(2.8 * loads + 0.8, 6.4), squeeze=False, sharey=True, facecolor=_SURFACE
     )
 
 
@@ -323,6 +330,9 @@ def _load_response(rows: Sequence[dict[str, str]], path: Path) -> None:
         axis = axes[0][column]
         _panel_label(axis, pattern)
         axis.set_yscale("log")
+        axis.yaxis.set_major_locator(LogLocator(base=10, subs=(1, 2, 5)))
+        axis.yaxis.set_major_formatter(_WHOLE_TICKS)
+        axis.yaxis.set_minor_locator(NullLocator())
         for name in algorithms:
             series = {
                 row["load"]: row
@@ -355,7 +365,10 @@ def _load_response(rows: Sequence[dict[str, str]], path: Path) -> None:
         figure,
         path,
         TITLES["load_response"],
-        ["Each step up the axis is ten times the last.", "Shading shows the range across seeds."],
+        [
+            "The axis is a log scale, so that all loads fit.",
+            "Shading shows the range across seeds.",
+        ],
         algorithms,
     )
 
@@ -383,7 +396,7 @@ def _car_movement(stats: Path, building: str, path: Path) -> None:
         path,
         TITLES["car_movement"],
         [f"One line per car, on the input {building}_{_SAMPLE_INPUT}."],
-        algorithms,
+        [],
     )
 
 
