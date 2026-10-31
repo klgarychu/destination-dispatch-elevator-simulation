@@ -86,10 +86,7 @@ def _trip(rng: random.Random, mix: tuple[int, int, int] | None, floors: int) -> 
     return source, dest
 
 
-def generate_requests(
-    pattern: str, rate: float, ticks: int, seed: int, floors: int
-) -> list[Request]:
-    """Poisson arrivals: exponential gaps, with the running time rounded down to a tick."""
+def _check_generation(pattern: str, rate: float, ticks: int, floors: int) -> None:
     if pattern not in PATTERNS:
         raise ConfigError(f"unknown pattern {pattern!r}: use {', '.join(PATTERNS)}")
     if isinstance(rate, bool) or not isinstance(rate, int | float) or not 0 < rate < math.inf:
@@ -101,10 +98,16 @@ def generate_requests(
     if ticks > MAX_GENERATED_REQUESTS / rate:
         limit = f"{MAX_GENERATED_REQUESTS:,}"
         raise ConfigError(f"rate {rate} for {ticks} ticks expects more than {limit} requests")
-    mix = PATTERNS[pattern]
-    if mix is not None and floors < 3:
+    if PATTERNS[pattern] is not None and floors < 3:
         raise ConfigError(f"pattern {pattern!r} needs at least 3 floors for interfloor trips")
 
+
+def generate_requests(
+    pattern: str, rate: float, ticks: int, seed: int, floors: int
+) -> list[Request]:
+    """Poisson arrivals: exponential gaps, with the running time rounded down to a tick."""
+    _check_generation(pattern, rate, ticks, floors)
+    mix = PATTERNS[pattern]
     rng = random.Random(seed)
     requests: list[Request] = []
     clock = rng.expovariate(rate)

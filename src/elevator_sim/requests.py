@@ -108,12 +108,12 @@ def _validated(
     return sorted((request for _, request in labelled), key=lambda request: request.time)
 
 
-def _parse_int(name: str, text: str, problems: list[str]) -> int:
+def _parse_int(name: str, text: str, problems: list[str]) -> int | None:
     try:
         return int(text)
     except ValueError:
         problems.append(f"{name} {text!r} is not an integer")
-        return 0
+        return None
 
 
 def load_requests(path: Path, floors: int) -> list[Request]:
@@ -137,7 +137,7 @@ def load_requests(path: Path, floors: int) -> list[Request]:
         time = _parse_int("time", row[0], parse_problems)
         source = _parse_int("source", row[2], parse_problems)
         dest = _parse_int("dest", row[3], parse_problems)
-        if parse_problems:
+        if time is None or source is None or dest is None:
             problems.extend((label, problem) for problem in parse_problems)
             continue
         labelled.append((label, Request(time, row[1], source, dest)))
