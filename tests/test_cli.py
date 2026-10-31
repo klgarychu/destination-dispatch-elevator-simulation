@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from elevator_sim.cli import main
+from elevator_sim.config import SimConfig
 
 ROOT = Path(__file__).parent.parent
 SAMPLE = str(ROOT / "examples" / "pdf_sample.csv")
@@ -284,6 +285,20 @@ def test_tst17_calibration_refuses_a_worker_count_below_one(
 
     assert main(["generate", "--calibrate", "--workers", "0", "--out", rates]) == 2
     assert "workers" in capsys.readouterr().err
+
+
+def test_tst17_calibration_uses_the_config_file_it_is_given(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = tmp_path / "baseline.toml"
+    config.write_text("[building]\nfloors = 5\n", encoding="utf-8")
+    calls: list[tuple[object, ...]] = []
+    monkeypatch.setattr("elevator_sim.cli.calibrate", lambda *args: calls.append(args))
+    rates = str(tmp_path / "rates.toml")
+
+    assert main(["generate", "--calibrate", "--config", str(config), "--out", rates]) == 0
+
+    assert calls[0][0] == {"baseline": SimConfig(floors=5)}
 
 
 def test_tst17_module_entry_point_runs_with_no_traceback_on_bad_input(tmp_path: Path) -> None:

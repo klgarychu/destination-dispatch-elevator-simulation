@@ -6,6 +6,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import replace
 from pathlib import Path
 
+from elevator_sim.calibration import calibrate
 from elevator_sim.config import ConfigError, SimConfig, load_config
 from elevator_sim.engine import SimulationStalledError, simulate
 from elevator_sim.experiment import file_tasks, run_suite, suite_tasks
@@ -15,7 +16,7 @@ from elevator_sim.workload import (
     BUILDINGS,
     RATES_FILE,
     SEEDS,
-    calibrate,
+    building_config,
     ensure_inputs,
     generate_requests,
     write_requests,
@@ -47,7 +48,10 @@ def _run(args: argparse.Namespace) -> int:
 
 def _generate(args: argparse.Namespace) -> int:
     if args.calibrate:
-        buildings = (args.config.stem,) if args.config else BUILDINGS
+        if args.config:
+            buildings = {args.config.stem: load_config(args.config)}
+        else:
+            buildings = {name: building_config(name) for name in BUILDINGS}
         calibrate(buildings, args.workers, args.out or RATES_FILE)
     elif args.suite:
         if args.out is None:
