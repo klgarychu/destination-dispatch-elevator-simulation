@@ -46,7 +46,11 @@ def forecast_car(car: Elevator, tick: int, extra: Request | None, order: int) ->
 
 
 class Forecaster:
-    """Caches each car's forecast, which stays exact until that car gets a new passenger [11]."""
+    """Caches each car's forecast, whose times stay exact until it gets a new passenger [11].
+
+    A forecast covers only the car's unfinished passengers, so one with and one without a new
+    request can be compared directly.
+    """
 
     def __init__(self, fleet: Sequence[Elevator], next_order: int = 0) -> None:
         self._cars = {car.car_id: car for car in fleet}
@@ -59,7 +63,7 @@ class Forecaster:
             if car_id not in self._plans:
                 car = self._cars[car_id]
                 self._plans[car_id] = forecast_car(car, tick, None, self._next_order)
-            return self._plans[car_id]
+            return self._unfinished_plan(car_id)
         key = (car_id, extra.id)
         if key not in self._trials:
             car = self._cars[car_id]
@@ -75,3 +79,12 @@ class Forecaster:
             self._plans[car_id] = trial
         self._trials.clear()
         self._next_order += 1
+
+    def _unfinished_plan(self, car_id: int) -> Forecast:
+        """The cached forecast, less anyone delivered since it was made."""
+        plan = self._plans[car_id]
+        on_car = {passenger.request.id for passenger in self._cars[car_id].passengers}
+        if plan.keys() != on_car:
+            plan = {name: trip for name, trip in plan.items() if name in on_car}
+            self._plans[car_id] = plan
+        return plan

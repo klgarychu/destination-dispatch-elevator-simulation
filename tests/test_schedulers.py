@@ -228,6 +228,27 @@ def test_tst11_marginal_insertion_breaks_ties_on_the_lowest_car_number() -> None
     assert MarginalInsertion().assign(new, view) == 1
 
 
+def test_tst11_marginal_insertion_ignores_a_passenger_already_delivered() -> None:
+    requests = [Request(0, "a", 1, 10), Request(10, "b", 1, 2)]
+
+    result = simulate(requests, SimConfig(floors=10, elevators=2))
+
+    # a leaves car 1 on floor 10 at tick 9. Car 2 is still idle on floor 1, so b boards at once.
+    b = result.passengers[1]
+    assert (b.car_id, b.board_tick, b.dropoff_tick) == (2, 10, 11)
+
+
+def test_tst11_marginal_insertion_ignores_a_delivered_passenger_while_another_rides() -> None:
+    requests = [Request(0, "x", 1, 20), Request(0, "y", 1, 10), Request(10, "z", 14, 13)]
+
+    result = simulate(requests, SimConfig(floors=20, elevators=2))
+
+    # y has left car 1, but x rides on to floor 20 at tick 19, so car 1 reaches z at tick 25 and
+    # costs 16. Car 2 climbs straight from floor 1, reaches z at tick 23, and costs 14.
+    z = result.passengers[2]
+    assert (z.car_id, z.board_tick, z.dropoff_tick) == (2, 23, 24)
+
+
 def test_every_algorithm_is_registered_under_its_own_name() -> None:
     assert [make_scheduler(name).name for name in ALGORITHMS] == list(ALGORITHMS)
 

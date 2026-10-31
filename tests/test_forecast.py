@@ -1,10 +1,11 @@
 """TST-10: a forecast matches what really happens if the car gets no further passengers."""
 
 import hypothesis.strategies as st
-from hypothesis import HealthCheck, given, settings
+from hypothesis import HealthCheck, example, given, settings
 from hypothesis.strategies import DrawFn
 
 from elevator_sim.config import SimConfig
+from elevator_sim.elevators.normal import NormalElevator
 from elevator_sim.engine import simulate
 from elevator_sim.forecast import Forecast
 from elevator_sim.requests import Direction, Passenger, Request
@@ -33,6 +34,25 @@ class ForecastSpy(Scheduler):
         return car_id
 
 
+class DecisionSpy(Scheduler):
+    """Wraps a scheduler and records whose trips each car's forecasts hold at every decision."""
+
+    name = "decision_spy"
+
+    def __init__(self, inner: Scheduler) -> None:
+        self.inner = inner
+        self.decisions: list[tuple[int, int, int, set[str], set[str]]] = []
+        self.count = 0
+
+    def assign(self, request: Request, view: FleetView) -> int:
+        for car in view.cars:
+            without = set(view.forecast(car.car_id))
+            with_new = set(view.forecast(car.car_id, request))
+            self.decisions.append((self.count, view.now, car.car_id, without, with_new))
+        self.count += 1
+        return self.inner.assign(request, view)
+
+
 @st.composite
 def scenarios(draw: DrawFn) -> tuple[SimConfig, list[Request]]:
     floors = draw(st.integers(2, 15))
@@ -41,7 +61,7 @@ def scenarios(draw: DrawFn) -> tuple[SimConfig, list[Request]]:
         elevators=draw(st.integers(1, 3)),
         capacity=draw(st.integers(1, 4)),
         start_floor=draw(st.integers(1, floors)),
-        algorithm=draw(st.sampled_from(("round_robin", "eta"))),
+        algorithm=draw(st.sampled_from(("round_robin", "eta", "marginal_insertion"))),
     )
     requests = []
     for index in range(draw(st.integers(1, 25))):
@@ -69,6 +89,38 @@ def test_tst10_each_cars_last_forecast_matches_the_real_run(
             assert trip.board_tick == actual[name].board_tick
             assert trip.dropoff_tick == actual[name].dropoff_tick
             assert trip.request_time == actual[name].request.time
+
+
+def still_travelling(passenger: Passenger, tick: int) -> bool:
+    """A rider arriving at this tick still counts, because assignment comes before the exchange."""
+    assert passenger.dropoff_tick is not None
+    return passenger.dropoff_tick >= tick
+
+
+@settings(max_examples=150, deadline=None, suppress_health_check=[HealthCheck.too_slow])
+@given(scenarios())
+@example(
+    (
+        SimConfig(floors=2, elevators=1, capacity=1),
+        [Request(2, "p0", 1, 2), Request(0, "p1", 1, 2)],
+    )
+)
+def test_tst10_every_forecast_holds_exactly_the_cars_unfinished_passengers(
+    scenario: tuple[SimConfig, list[Request]],
+) -> None:
+    config, requests = scenario
+    spy = DecisionSpy(make_scheduler(config.algorithm))
+
+    result = simulate(requests, config, scheduler=spy)
+
+    for order, tick, car_id, without, with_new in spy.decisions:
+        unfinished = {
+            p.request.id
+            for p in result.passengers
+            if p.car_id == car_id and p.order < order and still_travelling(p, tick)
+        }
+        assert without == unfinished
+        assert with_new == unfinished | {result.passengers[order].request.id}
 
 
 @settings(max_examples=100, deadline=None, suppress_health_check=[HealthCheck.too_slow])
@@ -143,3 +195,31 @@ def test_tst10_a_repeated_forecast_comes_from_the_cache() -> None:
     view = view_of(car_at(1, 3, Direction.UP, riders=[9]))
 
     assert view.forecast(1) is view.forecast(1)
+
+
+def ride_to_the_next_tick(car: NormalElevator, tick: int) -> None:
+    car.exchange(tick)
+    car.move()
+
+
+def test_tst10_a_cached_forecast_loses_a_passenger_once_delivered() -> None:
+    car = car_at(1, 3, Direction.UP, riders=[5, 9])
+    view = view_of(car)
+    assert set(view.forecast(1)) == {"rider1.0", "rider1.1"}
+
+    ride_to_the_next_tick(car, 0)
+    ride_to_the_next_tick(car, 1)
+    car.exchange(2)
+
+    assert list(view.forecast(1)) == ["rider1.1"]
+    assert view.forecast(1)["rider1.1"].dropoff_tick == 6
+
+
+def test_tst10_a_rider_arriving_this_tick_stays_in_the_forecast_until_the_exchange() -> None:
+    car = car_at(1, 3, Direction.UP, riders=[4, 9])
+    view = view_of(car)
+    view.forecast(1)
+
+    ride_to_the_next_tick(car, 0)
+
+    assert set(view.forecast(1)) == {"rider1.0", "rider1.1"}
