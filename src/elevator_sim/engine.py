@@ -50,25 +50,27 @@ def simulate(
     max_ticks = config.max_ticks or default_max_ticks(ordered, config.floors)
     passengers: list[Passenger] = []
     positions: list[tuple[int, ...]] = []
+    next_request = 0
     tick = 0
 
     while True:
-        while len(passengers) < len(ordered) and ordered[len(passengers)].time == tick:
-            request = ordered[len(passengers)]
+        while next_request < len(ordered) and ordered[next_request].time == tick:
+            request = ordered[next_request]
             view = fleet_view(fleet, tick, config.floors, config.capacity, forecaster)
             car_id = chooser.assign(request, view)
             if car_id not in {car.car_id for car in view.eligible(request)}:
                 raise SchedulerError(f"{chooser.name} chose car {car_id} for {request.id}")
-            passenger = Passenger(request, len(passengers), car_id)
+            passenger = Passenger(request, next_request, car_id)
             passengers.append(passenger)
             cars[car_id].assign(passenger)
             forecaster.confirm(car_id, request)
+            next_request += 1
 
         for car in fleet:
             car.exchange(tick)
         positions.append(tuple(car.position for car in fleet))
 
-        if len(passengers) == len(ordered) and not any(car.has_passengers for car in fleet):
+        if next_request == len(ordered) and not any(car.has_passengers for car in fleet):
             break
         if tick >= max_ticks:
             delivered = sum(1 for p in passengers if p.dropoff_tick is not None)
