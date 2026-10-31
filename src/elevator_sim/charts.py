@@ -5,7 +5,6 @@ them have low contrast against the background, so report.md is the table view of
 """
 
 import csv
-import json
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import Any
@@ -22,8 +21,8 @@ from matplotlib.ticker import FixedLocator, FuncFormatter, LogLocator, NullLocat
 
 from elevator_sim.config import ALGORITHMS, ConfigError
 from elevator_sim.metrics import nearest_rank
-from elevator_sim.output import read_manifest
-from elevator_sim.workload import LOADS, PATTERNS
+from elevator_sim.output import RunRecord, read_manifest, read_run_record
+from elevator_sim.workload import LOADS, PATTERNS, input_name
 
 COLOURS = {
     "round_robin": "#2a78d6",
@@ -55,7 +54,7 @@ _INK = "#0b0b0b"
 _SECONDARY_INK = "#52514e"
 _GRID = "#e1e0d9"
 _AXIS = "#c3c2b7"
-_SAMPLE_INPUT = "up_peak_heavy_s1"
+_SAMPLE_RUN = ("up_peak", "heavy", 1)
 _CAR_MOVEMENT_TICKS = 200
 # Room for the longest note, which ends at about 10.9 inches in the wider fallback font. Below this
 # a chart of one input loses its notes and legend. The narrowest suite chart held to this is exactly
@@ -140,10 +139,6 @@ def _read_aggregates(stats: Path) -> list[dict[str, str]]:
         return list(csv.DictReader(file))
 
 
-def _algorithm(row: dict[str, str]) -> str:
-    return row["config_id"].split("__")[0]
-
-
 def _panel_label(axes: Axes, text: str) -> None:
     axes.set_title(text, fontsize=9, color=_SECONDARY_INK, loc="left")
 
@@ -177,7 +172,7 @@ def _pick(rows: Sequence[dict[str, str]], pattern: str, load: str) -> list[dict[
 def _algorithm_comparison(rows: Sequence[dict[str, str]], path: Path) -> None:
     patterns = _in_order((row["pattern"] for row in rows), list(PATTERNS))
     loads = _in_order((row["load"] for row in rows), list(LOADS))
-    algorithms = fixed_order(_algorithm(row) for row in rows)
+    algorithms = fixed_order(row["algorithm"] for row in rows)
     width = max(2.6 * len(patterns) + 0.6, _MIN_WIDTH)
     figure, axes = _figure(len(loads), len(patterns), width, 2.0 * len(loads) + 1.0)
     for row_index, load in enumerate(loads):
@@ -190,7 +185,7 @@ def _algorithm_comparison(rows: Sequence[dict[str, str]], path: Path) -> None:
             if not picked:
                 _no_passengers(axis)
             for row in picked:
-                name = _algorithm(row)
+                name = row["algorithm"]
                 place = algorithms.index(name)
                 axis.plot(
                     [place, place],
@@ -227,19 +222,25 @@ def _algorithm_comparison(rows: Sequence[dict[str, str]], path: Path) -> None:
     )
 
 
+def _saved_run(stats: Path, run_id: str) -> RunRecord:
+    record = read_run_record(stats, run_id)
+    if record is None:
+        raise ConfigError(f"can't read run {run_id} in {stats}: run compare again")
+    return record
+
+
 def pooled_times(
     stats: Path, run_ids: Sequence[str], building: str
 ) -> dict[tuple[str, str], dict[str, list[int]]]:
     pooled: dict[tuple[str, str], dict[str, list[int]]] = {}
     for run_id in run_ids:
-        path = stats / "runs" / f"{run_id}.json"
-        record = json.loads(path.read_text(encoding="utf-8"))
-        if record["building"] != building:
+        record = _saved_run(stats, run_id)
+        if record.building != building:
             continue
-        key = (record["load"], record["settings"]["algorithm"])
+        key = (record.load, record.settings["algorithm"])
         times = pooled.setdefault(key, {"wait": [], "total": []})
-        times["wait"].extend(record["waits"])
-        times["total"].extend(record["totals"])
+        times["wait"].extend(record.waits)
+        times["total"].extend(record.totals)
     return pooled
 
 
@@ -316,7 +317,7 @@ def _distribution_figure(loads: int) -> tuple[Figure, Any]:
 def _fairness_vs_efficiency(rows: Sequence[dict[str, str]], path: Path) -> None:
     patterns = _in_order((row["pattern"] for row in rows), list(PATTERNS))
     loads = _in_order((row["load"] for row in rows), list(LOADS))
-    algorithms = fixed_order(_algorithm(row) for row in rows)
+    algorithms = fixed_order(row["algorithm"] for row in rows)
     width = max(2.6 * len(patterns) + 0.6, _MIN_WIDTH)
     figure, axes = _figure(len(loads), len(patterns), width, 2.2 * len(loads) + 1.0)
     for row_index, load in enumerate(loads):
@@ -328,7 +329,7 @@ def _fairness_vs_efficiency(rows: Sequence[dict[str, str]], path: Path) -> None:
             if not picked:
                 _no_passengers(axis)
             for row in picked:
-                name = _algorithm(row)
+                name = row["algorithm"]
                 x, y = float(row["total_mean_mean"]), float(row["wait_p95_mean"])
                 axis.plot(
                     [float(row["total_mean_min"]), float(row["total_mean_max"])],
@@ -366,7 +367,7 @@ def _fairness_vs_efficiency(rows: Sequence[dict[str, str]], path: Path) -> None:
 def _load_response(rows: Sequence[dict[str, str]], path: Path) -> None:
     patterns = _in_order((row["pattern"] for row in rows), list(PATTERNS))
     loads = _in_order((row["load"] for row in rows), list(LOADS))
-    algorithms = fixed_order(_algorithm(row) for row in rows)
+    algorithms = fixed_order(row["algorithm"] for row in rows)
     figure, axes = _figure(1, len(patterns), max(3.0 * len(patterns) + 0.6, _MIN_WIDTH), 4.4)
     for column, pattern in enumerate(patterns):
         axis = axes[0][column]
@@ -381,7 +382,7 @@ def _load_response(rows: Sequence[dict[str, str]], path: Path) -> None:
             series = {
                 row["load"]: row
                 for row in rows
-                if row["pattern"] == pattern and _algorithm(row) == name and _has_passengers(row)
+                if row["pattern"] == pattern and row["algorithm"] == name and _has_passengers(row)
             }
             places = [index for index, load in enumerate(loads) if load in series]
             members = [series[loads[index]] for index in places]
@@ -417,15 +418,13 @@ def _load_response(rows: Sequence[dict[str, str]], path: Path) -> None:
     )
 
 
-def _car_movement(stats: Path, run_ids: Sequence[str], building: str, path: Path) -> None:
-    sample = stats / "samples" / f"{building}_{_SAMPLE_INPUT}"
-    current = set(run_ids)
-    # A sample is filed by input, then by configuration: the two parts of a run id.
-    runs = {
-        folder.name.split("__")[0]: folder
-        for folder in sample.glob("*")
-        if f"{folder.name}__{sample.name}" in current
-    }
+def _car_movement(stats: Path, sample_ids: Sequence[str], building: str, path: Path) -> None:
+    runs: dict[str, Path] = {}
+    for run_id in sample_ids:
+        record = _saved_run(stats, run_id)
+        run = (record.pattern, record.load, record.seed)
+        if record.building == building and run == _SAMPLE_RUN and record.sample_dir:
+            runs[record.settings["algorithm"]] = stats / record.sample_dir
     if not runs:
         return
     algorithms = fixed_order(runs)
@@ -445,7 +444,7 @@ def _car_movement(stats: Path, run_ids: Sequence[str], building: str, path: Path
         figure,
         path,
         TITLES["car_movement"],
-        [f"One line per car, on the input {building}_{_SAMPLE_INPUT}."],
+        [f"One line per car, on the input {Path(input_name(building, *_SAMPLE_RUN)).stem}."],
         [],
     )
 
@@ -487,7 +486,7 @@ def write_charts(stats: Path, out: Path) -> list[Path]:
         _distributions(stats, run_ids, building, target)
         written.append(target)
         target = out / f"car_movement_{building}.png"
-        _car_movement(stats, run_ids, building, target)
+        _car_movement(stats, manifest.samples, building, target)
         if target.exists():
             written.append(target)
     return written

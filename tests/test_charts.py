@@ -160,6 +160,18 @@ def test_tst17_charts_replace_their_own_earlier_files_and_leave_others_alone(
     assert (charts / "my_notes.png").exists()
 
 
+def test_tst17_charts_stop_on_a_saved_run_they_cannot_read(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    out = tmp_path / "out"
+    compare(write_input(tmp_path, "input.csv", SIX_ROWS), out)
+    (out / "runs" / "eta__min_time__none__none__input.json").unlink()
+
+    assert draw(out, tmp_path / "charts") == 2
+
+    assert "run compare" in capsys.readouterr().err
+
+
 def test_tst17_charts_stop_on_a_folder_with_no_finished_comparison(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

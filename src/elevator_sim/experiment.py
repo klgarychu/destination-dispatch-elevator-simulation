@@ -25,10 +25,13 @@ from elevator_sim.metrics import run_stats, total_time, wait_time
 from elevator_sim.output import (
     MANIFEST_FILE,
     Manifest,
+    RunRecord,
+    read_run_record,
+    run_file,
     write_csv,
-    write_json,
     write_manifest,
     write_run,
+    write_run_record,
 )
 from elevator_sim.report import render_report
 from elevator_sim.requests import load_requests
@@ -174,27 +177,21 @@ def _rounded(value: int | float | None) -> int | float | None:
     return round(value, 4) if isinstance(value, float) else value
 
 
-def _run_file(task: Task, out: Path) -> Path:
-    return out / "runs" / f"{task.run_id}.json"
-
-
-def _sample_dir(task: Task, out: Path) -> Path:
-    return out / "samples" / task.input_path.stem / config_id(task.config)
+def _sample_dir(task: Task) -> str:
+    """Where a run's full logs go, relative to the results folder."""
+    return f"samples/{task.input_path.stem}/{config_id(task.config)}"
 
 
 def _is_current(task: Task, fingerprint: str, out: Path) -> bool:
     """Whether a run is saved, and can be shown to come from this input, settings and code."""
-    try:
-        record: dict[str, Any] = json.loads(_run_file(task, out).read_text(encoding="utf-8"))
-    except FileNotFoundError, json.JSONDecodeError:
-        return False
-    return record.get("fingerprint") == fingerprint
+    saved = read_run_record(out, task.run_id)
+    return saved is not None and saved.fingerprint == fingerprint
 
 
 def _discard(task: Task, out: Path) -> None:
     """Remove a stale result first, so a run that then stalls can't leave it on show."""
-    _run_file(task, out).unlink(missing_ok=True)
-    shutil.rmtree(_sample_dir(task, out), ignore_errors=True)
+    run_file(out, task.run_id).unlink(missing_ok=True)
+    shutil.rmtree(out / _sample_dir(task), ignore_errors=True)
 
 
 def run_task(task: Task, fingerprint: str, out: Path) -> tuple[str, str, float]:
@@ -204,27 +201,26 @@ def run_task(task: Task, fingerprint: str, out: Path) -> tuple[str, str, float]:
         result = simulate(load_requests(task.input_path, task.config.floors), task.config)
     except SimulationStalledError as error:
         return task.run_id, f"stalled: {error}", time.perf_counter() - started
-    if task.sample:
-        write_run(result, _sample_dir(task, out))
-    record = {
-        "run_id": task.run_id,
-        "fingerprint": fingerprint,
-        "config_id": config_id(task.config),
-        "stage": task.stage,
-        "building": task.building,
-        "pattern": task.pattern,
-        "load": task.load,
-        "seed": task.seed,
-        "settings": settings_record(task.config),
-        "stats": {key: _rounded(value) for key, value in run_stats(result).items()}
-        | _NOT_BUILT_YET,
-        "waits": [wait_time(p) for p in result.passengers],
-        "totals": [total_time(p) for p in result.passengers],
-    }
-    # Written then renamed, so an interrupted suite can't leave half a result to resume from.
-    partial = out / "runs" / f"{task.run_id}.partial"
-    write_json(partial, record)
-    partial.replace(_run_file(task, out))
+    sample_dir = _sample_dir(task) if task.sample else None
+    if sample_dir is not None:
+        write_run(result, out / sample_dir)
+    stats = {key: _rounded(value) for key, value in run_stats(result).items()}
+    record = RunRecord(
+        run_id=task.run_id,
+        fingerprint=fingerprint,
+        config_id=config_id(task.config),
+        stage=task.stage,
+        building=task.building,
+        pattern=task.pattern,
+        load=task.load,
+        seed=task.seed,
+        settings=settings_record(task.config),
+        stats=stats | _NOT_BUILT_YET,
+        waits=[wait_time(p) for p in result.passengers],
+        totals=[total_time(p) for p in result.passengers],
+        sample_dir=sample_dir,
+    )
+    write_run_record(out, record)
     return task.run_id, "ok", time.perf_counter() - started
 
 
@@ -271,11 +267,10 @@ def load_rows(tasks: Iterable[Task], out: Path) -> list[dict[str, Any]]:
     """One flat row per finished run, in task order."""
     rows = []
     for task in tasks:
-        path = _run_file(task, out)
-        if path.exists():
-            record = json.loads(path.read_text(encoding="utf-8"))
-            identity = {key: record[key] for key in _IDENTITY_COLUMNS}
-            rows.append(identity | record["settings"] | record["stats"])
+        record = read_run_record(out, task.run_id)
+        if record is not None:
+            identity = {key: getattr(record, key) for key in _IDENTITY_COLUMNS}
+            rows.append(identity | record.settings | record.stats)
     return rows
 
 
@@ -290,6 +285,8 @@ def aggregate(rows: Sequence[dict[str, Any]], keys: Sequence[str]) -> list[dict[
     for (config, building, pattern, load), members in groups.items():
         entry: dict[str, Any] = {
             "config_id": config,
+            "algorithm": members[0]["algorithm"],
+            "behaviour": members[0]["behaviour"],
             "building": building,
             "pattern": pattern,
             "load": load,
@@ -314,7 +311,7 @@ def write_statistics(
     )
 
     aggregated = aggregate(rows, AGGREGATE_KEYS)
-    columns = ["config_id", "building", "pattern", "load", "seeds"]
+    columns = ["config_id", "algorithm", "behaviour", "building", "pattern", "load", "seeds"]
     columns += [f"{key}_{part}" for key in AGGREGATE_KEYS for part in ("mean", "min", "max")]
     write_csv(
         out / "aggregate_stats.csv",
@@ -350,5 +347,6 @@ def run_suite(tasks: Sequence[Task], out: Path, workers: int) -> SuiteOutcome:
     # In task order, not the order runs stalled in, so the files stay byte-identical.
     not_finished = [task.run_id for task in tasks if task.run_id not in done]
     write_statistics(rows, out, not_finished)
-    write_manifest(out, Manifest(finished, not_finished))
+    samples = [task.run_id for task in tasks if task.sample and task.run_id in done]
+    write_manifest(out, Manifest(finished, not_finished, samples))
     return outcome

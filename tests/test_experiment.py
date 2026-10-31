@@ -132,6 +132,8 @@ def test_tst16_aggregate_gives_mean_min_and_max_across_seeds() -> None:
     rows: list[dict[str, object]] = [
         {
             "config_id": "x",
+            "algorithm": "eta",
+            "behaviour": "min_time",
             "building": "b",
             "pattern": "p",
             "load": "l",
@@ -141,6 +143,8 @@ def test_tst16_aggregate_gives_mean_min_and_max_across_seeds() -> None:
         },
         {
             "config_id": "x",
+            "algorithm": "eta",
+            "behaviour": "min_time",
             "building": "b",
             "pattern": "p",
             "load": "l",
@@ -150,6 +154,8 @@ def test_tst16_aggregate_gives_mean_min_and_max_across_seeds() -> None:
         },
         {
             "config_id": "x",
+            "algorithm": "eta",
+            "behaviour": "min_time",
             "building": "b",
             "pattern": "p",
             "load": "other",
@@ -176,7 +182,8 @@ def test_tst16_aggregate_stats_file_has_one_row_per_configuration_and_input_grou
 ) -> None:
     rows = read_rows(compare(tmp_path, "out") / "aggregate_stats.csv")
 
-    assert [row["config_id"].split("__")[0] for row in rows] == list(ALGORITHMS)
+    assert [row["algorithm"] for row in rows] == list(ALGORITHMS)
+    assert {row["behaviour"] for row in rows} == {"min_time"}
     assert rows[0]["seeds"] == "1"
     assert {f"{key}_mean" for key in AGGREGATE_KEYS} <= set(rows[0])
 
@@ -365,6 +372,21 @@ def test_a_stalled_run_is_recorded_as_not_finished_in_task_order(tmp_path: Path)
     assert read_manifest(out).runs == ["eta"]
     assert read_manifest(out).not_finished == ["zone_based", "round_robin"]
     assert "`zone_based`, `round_robin`" in (out / "report.md").read_text(encoding="utf-8")
+
+
+def test_the_manifest_lists_the_runs_that_kept_full_logs(tmp_path: Path) -> None:
+    file = tmp_path / "input.csv"
+    file.write_text(SIX_ROWS, encoding="utf-8")
+    out = tmp_path / "out"
+    config = SimConfig(algorithm="eta")
+    tasks = [
+        Task("logged", config, 1, "b", "p", "l", 1, file, sample=True),
+        Task("plain", config, 1, "b", "p", "l", 2, file),
+    ]
+
+    run_suite(tasks, out, workers=1)
+
+    assert read_manifest(out).samples == ["logged"]
 
 
 def test_a_refused_worker_count_leaves_the_last_comparison_intact(tmp_path: Path) -> None:

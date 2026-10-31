@@ -6,7 +6,14 @@ from pathlib import Path
 
 from elevator_sim.config import SimConfig
 from elevator_sim.engine import simulate
-from elevator_sim.output import format_summary, summary_data, write_run
+from elevator_sim.output import (
+    RunRecord,
+    format_summary,
+    read_run_record,
+    summary_data,
+    write_run,
+    write_run_record,
+)
 from elevator_sim.requests import Request
 
 PDF_SAMPLE = [
@@ -93,6 +100,45 @@ def test_summary_config_holds_all_settings_in_full() -> None:
         "rule_value": None,
         "unguarded": True,
     }
+
+
+def a_record(run_id: str = "run", sample_dir: str | None = None) -> RunRecord:
+    return RunRecord(
+        run_id=run_id,
+        fingerprint="abc",
+        config_id="eta__min_time__none__none",
+        stage=1,
+        building="baseline",
+        pattern="lunch",
+        load="heavy",
+        seed=1,
+        settings={"algorithm": "eta"},
+        stats={"passengers": 2},
+        waits=[0, 3],
+        totals=[4, 9],
+        sample_dir=sample_dir,
+    )
+
+
+def test_a_saved_run_reads_back_the_same(tmp_path: Path) -> None:
+    (tmp_path / "runs").mkdir()
+    record = a_record(sample_dir="samples/input/eta__min_time__none__none")
+
+    write_run_record(tmp_path, record)
+
+    assert read_run_record(tmp_path, "run") == record
+
+
+def test_saving_a_run_leaves_only_the_finished_file(tmp_path: Path) -> None:
+    (tmp_path / "runs").mkdir()
+
+    write_run_record(tmp_path, a_record())
+
+    assert [path.name for path in (tmp_path / "runs").iterdir()] == ["run.json"]
+
+
+def test_a_missing_run_reads_as_none(tmp_path: Path) -> None:
+    assert read_run_record(tmp_path, "absent") is None
 
 
 def test_i5_empty_run_has_null_statistics(tmp_path: Path) -> None:

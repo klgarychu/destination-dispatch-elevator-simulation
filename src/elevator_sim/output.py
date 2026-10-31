@@ -46,11 +46,50 @@ def write_json(path: Path, data: object) -> None:
 
 
 @dataclass(frozen=True, slots=True)
+class RunRecord:
+    """One finished run, as saved in runs/<run_id>.json."""
+
+    run_id: str
+    fingerprint: str
+    config_id: str
+    stage: int
+    building: str
+    pattern: str
+    load: str
+    seed: int
+    settings: dict[str, Any]
+    stats: dict[str, Any]
+    waits: list[int]
+    totals: list[int]
+    sample_dir: str | None
+
+
+def run_file(out: Path, run_id: str) -> Path:
+    return out / "runs" / f"{run_id}.json"
+
+
+def write_run_record(out: Path, record: RunRecord) -> None:
+    """Written then renamed, so an interrupted suite can't leave half a result to resume from."""
+    partial = out / "runs" / f"{record.run_id}.partial"
+    write_json(partial, asdict(record))
+    partial.replace(run_file(out, record.run_id))
+
+
+def read_run_record(out: Path, run_id: str) -> RunRecord | None:
+    """A saved run, or None if it's missing or was saved in another format."""
+    try:
+        return RunRecord(**json.loads(run_file(out, run_id).read_text(encoding="utf-8")))
+    except FileNotFoundError, json.JSONDecodeError, TypeError:
+        return None
+
+
+@dataclass(frozen=True, slots=True)
 class Manifest:
-    """The runs a folder's statistics cover, and any that were asked for but didn't finish."""
+    """The runs a folder's statistics cover, any that didn't finish, and those with full logs."""
 
     runs: list[str]
     not_finished: list[str]
+    samples: list[str]
 
 
 def write_manifest(out: Path, manifest: Manifest) -> None:
@@ -62,9 +101,8 @@ def read_manifest(out: Path) -> Manifest:
     if not path.exists():
         raise ConfigError(f"no finished comparison at {path}: run compare first")
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-        return Manifest(data["runs"], data["not_finished"])
-    except json.JSONDecodeError, KeyError, TypeError:
+        return Manifest(**json.loads(path.read_text(encoding="utf-8")))
+    except json.JSONDecodeError, TypeError:
         raise ConfigError(f"can't read {path}: run compare again") from None
 
 
