@@ -1,4 +1,4 @@
-"""Simulated requests and load calibration (spec section 12)."""
+"""Simulated requests and the suite's input files (spec section 12)."""
 
 import csv
 import math
