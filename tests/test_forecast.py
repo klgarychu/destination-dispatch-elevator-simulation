@@ -26,10 +26,10 @@ class ForecastSpy(Scheduler):
 
     def assign(self, request: Request, view: FleetView) -> int:
         car_id = self.inner.assign(request, view)
-        self.latest[car_id] = view.forecast(car_id, request)
+        self.latest[car_id] = view.candidate_forecast(car_id, request)
         for car in view.cars:
             if car.car_id != car_id:
-                self.latest_cached[car.car_id] = view.forecast(car.car_id)
+                self.latest_cached[car.car_id] = view.baseline_forecast(car.car_id)
         self.latest_cached.pop(car_id, None)
         return car_id
 
@@ -46,10 +46,27 @@ class DecisionSpy(Scheduler):
 
     def assign(self, request: Request, view: FleetView) -> int:
         for car in view.cars:
-            without = set(view.forecast(car.car_id))
-            with_new = set(view.forecast(car.car_id, request))
+            without = set(view.baseline_forecast(car.car_id))
+            with_new = set(view.candidate_forecast(car.car_id, request))
             self.decisions.append((self.count, view.now, car.car_id, without, with_new))
         self.count += 1
+        return self.inner.assign(request, view)
+
+
+class ReferenceSpy(Scheduler):
+    """Wraps a scheduler and checks every cached forecast against a fresh one, at every decision."""
+
+    name = "reference_spy"
+
+    def __init__(self, inner: Scheduler) -> None:
+        self.inner = inner
+
+    def assign(self, request: Request, view: FleetView) -> int:
+        for car in view.cars:
+            fresh = view.forecaster.fresh
+            assert view.baseline_forecast(car.car_id) == fresh(car.car_id, view.now)
+            candidate = view.candidate_forecast(car.car_id, request)
+            assert candidate == fresh(car.car_id, view.now, request)
         return self.inner.assign(request, view)
 
 
@@ -123,6 +140,16 @@ def test_tst10_every_forecast_holds_exactly_the_cars_unfinished_passengers(
         assert with_new == unfinished | {result.passengers[order].request.id}
 
 
+@settings(max_examples=150, deadline=None, suppress_health_check=[HealthCheck.too_slow])
+@given(scenarios())
+def test_tst10_every_cached_forecast_equals_a_fresh_one(
+    scenario: tuple[SimConfig, list[Request]],
+) -> None:
+    config, requests = scenario
+
+    simulate(requests, config, scheduler=ReferenceSpy(make_scheduler(config.algorithm)))
+
+
 @settings(max_examples=100, deadline=None, suppress_health_check=[HealthCheck.too_slow])
 @given(scenarios())
 def test_tst10_forecasting_changes_nothing_in_the_real_run(
@@ -140,26 +167,26 @@ def test_tst10_forecasting_changes_nothing_in_the_real_run(
 def test_tst10_forecast_records_riders_and_waiting_passengers() -> None:
     view = view_of(car_at(1, 3, Direction.UP, riders=[9], waiting=[("A", 5, 7)]))
 
-    forecast = view.forecast(1)
+    forecast = view.baseline_forecast(1)
 
     assert forecast["rider1.0"].dropoff_tick == 6
     assert (forecast["A"].board_tick, forecast["A"].dropoff_tick) == (2, 4)
 
 
 def test_tst10_an_empty_car_has_an_empty_forecast() -> None:
-    assert view_of(car_at(1, 3)).forecast(1) == {}
+    assert view_of(car_at(1, 3)).baseline_forecast(1) == {}
 
 
 def test_tst10_forecast_is_measured_in_absolute_ticks() -> None:
     new = Request(30, "new", 5, 9)
 
-    assert view_of(car_at(1, 3), now=30).forecast(1, new)["new"].board_tick == 32
+    assert view_of(car_at(1, 3), now=30).candidate_forecast(1, new)["new"].board_tick == 32
 
 
 def test_tst10_a_forecast_leaves_the_real_car_untouched() -> None:
     car = car_at(1, 3, Direction.UP, riders=[9], waiting=[("A", 5, 7)])
 
-    view_of(car).forecast(1, Request(0, "new", 8, 9))
+    view_of(car).candidate_forecast(1, Request(0, "new", 8, 9))
 
     assert (car.position, car.direction) == (3, Direction.UP)
     assert car.waiting_count == 1
@@ -171,12 +198,12 @@ def test_tst10_a_new_passenger_replaces_the_cached_forecast() -> None:
     car = car_at(1, 3, Direction.UP, riders=[9])
     view = view_of(car)
 
-    before = view.forecast(1)
+    before = view.baseline_forecast(1)
     car.assign(Passenger(new, 100, 1))
     view.forecaster.confirm(1, new)
 
     assert "new" not in before
-    assert view.forecast(1)["new"].board_tick == 5
+    assert view.baseline_forecast(1)["new"].board_tick == 5
 
 
 def test_tst10_the_accepted_trial_becomes_the_cached_forecast() -> None:
@@ -184,17 +211,17 @@ def test_tst10_the_accepted_trial_becomes_the_cached_forecast() -> None:
     car = car_at(1, 3, Direction.UP, riders=[9])
     view = view_of(car)
 
-    trial = view.forecast(1, new)
+    trial = view.candidate_forecast(1, new)
     car.assign(Passenger(new, 100, 1))
     view.forecaster.confirm(1, new)
 
-    assert view.forecast(1) is trial
+    assert view.baseline_forecast(1) is trial
 
 
 def test_tst10_a_repeated_forecast_comes_from_the_cache() -> None:
     view = view_of(car_at(1, 3, Direction.UP, riders=[9]))
 
-    assert view.forecast(1) is view.forecast(1)
+    assert view.baseline_forecast(1) is view.baseline_forecast(1)
 
 
 def ride_to_the_next_tick(car: NormalElevator, tick: int) -> None:
@@ -205,21 +232,21 @@ def ride_to_the_next_tick(car: NormalElevator, tick: int) -> None:
 def test_tst10_a_cached_forecast_loses_a_passenger_once_delivered() -> None:
     car = car_at(1, 3, Direction.UP, riders=[5, 9])
     view = view_of(car)
-    assert set(view.forecast(1)) == {"rider1.0", "rider1.1"}
+    assert set(view.baseline_forecast(1)) == {"rider1.0", "rider1.1"}
 
     ride_to_the_next_tick(car, 0)
     ride_to_the_next_tick(car, 1)
     car.exchange(2)
 
-    assert list(view.forecast(1)) == ["rider1.1"]
-    assert view.forecast(1)["rider1.1"].dropoff_tick == 6
+    assert list(view.baseline_forecast(1)) == ["rider1.1"]
+    assert view.baseline_forecast(1)["rider1.1"].dropoff_tick == 6
 
 
 def test_tst10_a_rider_arriving_this_tick_stays_in_the_forecast_until_the_exchange() -> None:
     car = car_at(1, 3, Direction.UP, riders=[4, 9])
     view = view_of(car)
-    view.forecast(1)
+    view.baseline_forecast(1)
 
     ride_to_the_next_tick(car, 0)
 
-    assert set(view.forecast(1)) == {"rider1.0", "rider1.1"}
+    assert set(view.baseline_forecast(1)) == {"rider1.0", "rider1.1"}

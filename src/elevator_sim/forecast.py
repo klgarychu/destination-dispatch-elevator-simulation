@@ -46,45 +46,49 @@ def forecast_car(car: Elevator, tick: int, extra: Request | None, order: int) ->
 
 
 class Forecaster:
-    """Caches each car's forecast, whose times stay exact until it gets a new passenger [11].
+    """The fleet's forecasts, cached because a car's plan changes only with a new passenger [11].
 
-    A forecast covers only the car's unfinished passengers, so one with and one without a new
-    request can be compared directly.
+    A baseline covers a car's unfinished passengers, and lasts until the car gets a new one. A
+    candidate adds one request, and lasts until the next assignment. Both cover the same existing
+    passengers, so they can be compared directly, and `fresh` is the reference both must equal.
     """
 
     def __init__(self, fleet: Sequence[Elevator], next_order: int = 0) -> None:
         self._cars = {car.car_id: car for car in fleet}
         self._next_order = next_order
-        self._plans: dict[int, Forecast] = {}
-        self._trials: dict[tuple[int, str], Forecast] = {}
+        self._baselines: dict[int, Forecast] = {}
+        self._candidates: dict[tuple[int, str], Forecast] = {}
 
-    def forecast(self, car_id: int, tick: int, extra: Request | None = None) -> Forecast:
-        if extra is None:
-            if car_id not in self._plans:
-                car = self._cars[car_id]
-                self._plans[car_id] = forecast_car(car, tick, None, self._next_order)
-            return self._unfinished_plan(car_id)
-        key = (car_id, extra.id)
-        if key not in self._trials:
-            car = self._cars[car_id]
-            self._trials[key] = forecast_car(car, tick, extra, self._next_order)
-        return self._trials[key]
+    def fresh(self, car_id: int, tick: int, extra: Request | None = None) -> Forecast:
+        """Simulate the car from scratch, with no cache."""
+        return forecast_car(self._cars[car_id], tick, extra, self._next_order)
+
+    def baseline(self, car_id: int, tick: int) -> Forecast:
+        if car_id not in self._baselines:
+            self._baselines[car_id] = self.fresh(car_id, tick)
+        return self._unfinished_baseline(car_id)
+
+    def candidate(self, car_id: int, tick: int, request: Request) -> Forecast:
+        key = (car_id, request.id)
+        if key not in self._candidates:
+            self._candidates[key] = self.fresh(car_id, tick, request)
+        return self._candidates[key]
 
     def confirm(self, car_id: int, request: Request) -> None:
-        """Record an assignment. Its trial forecast, if any, becomes the car's cached one."""
-        trial = self._trials.get((car_id, request.id))
-        if trial is None:
-            self._plans.pop(car_id, None)
+        """Record an assignment. Its candidate, if any, becomes the car's baseline."""
+        candidate = self._candidates.get((car_id, request.id))
+        if candidate is None:
+            self._baselines.pop(car_id, None)
         else:
-            self._plans[car_id] = trial
-        self._trials.clear()
+            self._baselines[car_id] = candidate
+        self._candidates.clear()
         self._next_order += 1
 
-    def _unfinished_plan(self, car_id: int) -> Forecast:
-        """The cached forecast, less anyone delivered since it was made."""
-        plan = self._plans[car_id]
+    def _unfinished_baseline(self, car_id: int) -> Forecast:
+        """The cached baseline, less anyone delivered since it was made."""
+        baseline = self._baselines[car_id]
         on_car = {passenger.request.id for passenger in self._cars[car_id].passengers}
-        if plan.keys() != on_car:
-            plan = {name: trip for name, trip in plan.items() if name in on_car}
-            self._plans[car_id] = plan
-        return plan
+        if baseline.keys() != on_car:
+            baseline = {name: trip for name, trip in baseline.items() if name in on_car}
+            self._baselines[car_id] = baseline
+        return baseline

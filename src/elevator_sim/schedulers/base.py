@@ -34,8 +34,11 @@ class FleetView:
     def eligible(self, request: Request) -> tuple[CarView, ...]:
         return tuple(car for car in self.cars if car.can_serve(request.source, request.dest))
 
-    def forecast(self, car_id: int, extra: Request | None = None) -> Forecast:
-        return self.forecaster.forecast(car_id, self.now, extra)
+    def baseline_forecast(self, car_id: int) -> Forecast:
+        return self.forecaster.baseline(car_id, self.now)
+
+    def candidate_forecast(self, car_id: int, request: Request) -> Forecast:
+        return self.forecaster.candidate(car_id, self.now, request)
 
 
 def fleet_view(

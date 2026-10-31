@@ -9,7 +9,8 @@ class Eta(Scheduler):
 
     def waits(self, request: Request, view: FleetView) -> dict[int, int]:
         return {
-            car.car_id: view.forecast(car.car_id, request)[request.id].board_tick - request.time
+            car.car_id: view.candidate_forecast(car.car_id, request)[request.id].board_tick
+            - request.time
             for car in view.eligible(request)
         }
 

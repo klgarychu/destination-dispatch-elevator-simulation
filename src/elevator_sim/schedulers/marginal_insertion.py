@@ -21,8 +21,8 @@ class MarginalInsertion(Scheduler):
 
     def costs(self, request: Request, view: FleetView) -> dict[int, int]:
         return {
-            car.car_id: _passenger_time(view.forecast(car.car_id, request))
-            - _passenger_time(view.forecast(car.car_id))
+            car.car_id: _passenger_time(view.candidate_forecast(car.car_id, request))
+            - _passenger_time(view.baseline_forecast(car.car_id))
             for car in view.eligible(request)
         }
 
