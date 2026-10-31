@@ -350,6 +350,17 @@ def test_every_output_leaves_out_a_configuration_with_no_finished_runs(tmp_path:
     ]
 
 
+def test_a_refused_worker_count_leaves_the_last_comparison_intact(tmp_path: Path) -> None:
+    out = compare(tmp_path, "out")
+
+    code = main(
+        ["compare", "--requests", str(tmp_path / "input.csv"), "--workers", "0", "--out", str(out)]
+    )
+
+    assert code == 2
+    assert read_manifest(out)
+
+
 def test_compare_says_how_many_runs_it_ran_and_how_many_it_reused(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

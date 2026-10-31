@@ -2,6 +2,8 @@ from pathlib import Path
 
 import pytest
 
+from elevator_sim.config import SimConfig
+from elevator_sim.engine import simulate
 from elevator_sim.requests import InputValidationError, Request, load_requests, validate_requests
 
 HEADER = "time,id,source,dest\n"
@@ -86,6 +88,46 @@ def test_tst03_lists_every_bad_row(tmp_path: Path) -> None:
 def test_tst03_validate_requests_applies_the_same_rules_to_a_list() -> None:
     with pytest.raises(InputValidationError, match="dest"):
         validate_requests([Request(0, "a", 1, 6)], floors=5)
+
+
+@pytest.mark.parametrize(
+    ("bad", "expected"),
+    [
+        (Request(0.5, "a", 1, 2), "time"),
+        (Request(float("nan"), "a", 1, 2), "time"),
+        (Request(True, "a", 1, 2), "time"),
+        (Request(0, 5, 1, 2), "id"),
+        (Request(0, ["a"], 1, 2), "id"),
+        (Request(0, "a", 1.5, 2), "source"),
+        (Request(0, "a", True, 2), "source"),
+        (Request(0, "a", 1, 2.5), "dest"),
+    ],
+)
+def test_tst03_validate_requests_rejects_fields_of_the_wrong_type(
+    bad: Request, expected: str
+) -> None:
+    with pytest.raises(InputValidationError, match=expected):
+        validate_requests([bad], floors=5)
+
+
+def test_tst03_simulate_refuses_a_fractional_time_instead_of_stalling() -> None:
+    with pytest.raises(InputValidationError, match="time"):
+        simulate([Request(0.5, "a", 1, 2)], SimConfig(floors=3))
+
+
+def test_tst03_rejects_a_file_that_is_not_utf_8(tmp_path: Path) -> None:
+    file = tmp_path / "requests.csv"
+    file.write_bytes(b"time,id,source,dest\n0,caf\xe9,1,2\n")
+
+    with pytest.raises(InputValidationError, match=r"requests\.csv"):
+        load_requests(file, floors=5)
+
+
+def test_tst03_rejects_a_file_the_csv_reader_cannot_parse(tmp_path: Path) -> None:
+    file = write_csv(tmp_path, f"0,{'x' * 200_000},1,2\n")
+
+    with pytest.raises(InputValidationError, match=r"requests\.csv"):
+        load_requests(file, floors=5)
 
 
 def test_tst03_validate_requests_sorts_a_list() -> None:

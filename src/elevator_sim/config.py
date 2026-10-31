@@ -24,11 +24,31 @@ _LATER_TABLES = {"express": 2}
 
 _BUILDING_KEYS = {"floors", "elevators", "capacity", "start_floor"}
 _DISPATCH_KEYS = {"algorithm", "behaviour"}
-_INTEGER_KEYS = {"floors", "elevators", "capacity", "start_floor"}
+_INTEGER_KEYS = ("floors", "elevators", "capacity", "start_floor")
 
 
 class ConfigError(ValueError):
     """Invalid settings."""
+
+
+def is_whole_number(value: object) -> bool:
+    """True for an int, but not for True or False, which Python also counts as ints."""
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def check_workers(workers: int) -> None:
+    if not is_whole_number(workers) or workers < 1:
+        raise ConfigError(f"workers must be at least 1, not {workers!r}")
+
+
+def _require_whole_number(name: str, value: object) -> None:
+    if not is_whole_number(value):
+        raise ConfigError(f"{name} must be a whole number, not {value!r}")
+
+
+def _require_text(name: str, value: object) -> None:
+    if not isinstance(value, str):
+        raise ConfigError(f"{name} must be text, not {value!r}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,6 +62,12 @@ class SimConfig:
     max_ticks: int | None = None
 
     def __post_init__(self) -> None:
+        for name in _INTEGER_KEYS:
+            _require_whole_number(name, getattr(self, name))
+        if self.max_ticks is not None:
+            _require_whole_number("max_ticks", self.max_ticks)
+        _require_text("algorithm", self.algorithm)
+        _require_text("behaviour", self.behaviour)
         if self.floors < 2:
             raise ConfigError(f"floors must be at least 2, not {self.floors}")
         if self.elevators < 1:
@@ -82,14 +108,14 @@ def settings_record(config: SimConfig) -> dict[str, str | float | bool | None]:
 
 
 def _read_section(data: dict[str, Any], name: str, allowed: set[str]) -> dict[str, Any]:
-    section: dict[str, Any] = data.pop(name, {})
-    for key, value in section.items():
+    section = data.pop(name, {})
+    if not isinstance(section, dict):
+        raise ConfigError(f"{name} must be a [{name}] section, not {section!r}")
+    for key in section:
         if key in _LATER_SETTINGS:
             raise ConfigError(f"setting {key!r} arrives in Phase {_LATER_SETTINGS[key]}")
         if key not in allowed:
             raise ConfigError(f"unknown setting {key!r} in [{name}]")
-        if key in _INTEGER_KEYS and not isinstance(value, int):
-            raise ConfigError(f"{key} must be an integer, not {value!r}")
     return section
 
 
@@ -99,7 +125,7 @@ def load_config(path: Path) -> SimConfig:
             data = tomllib.load(file)
     except FileNotFoundError:
         raise ConfigError(f"config file not found: {path}") from None
-    except tomllib.TOMLDecodeError as error:
+    except (tomllib.TOMLDecodeError, UnicodeDecodeError) as error:
         raise ConfigError(f"{path}: {error}") from None
 
     building = _read_section(data, "building", _BUILDING_KEYS)

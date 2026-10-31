@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from enum import IntEnum
 from pathlib import Path
 
+from elevator_sim.config import is_whole_number
+
 CSV_HEADER = ["time", "id", "source", "dest"]
 
 
@@ -61,12 +63,18 @@ class Passenger:
 
 def _problems_with(request: Request, floors: int) -> list[str]:
     problems = []
-    if request.time < 0:
+    if not is_whole_number(request.time):
+        problems.append(f"time {request.time!r} is not a whole number")
+    elif request.time < 0:
         problems.append(f"time {request.time} is negative")
-    if not request.id:
+    if not isinstance(request.id, str):
+        problems.append(f"id {request.id!r} is not text")
+    elif not request.id:
         problems.append("id is empty")
     for name, floor in (("source", request.source), ("dest", request.dest)):
-        if not 1 <= floor <= floors:
+        if not is_whole_number(floor):
+            problems.append(f"{name} {floor!r} is not a whole number")
+        elif not 1 <= floor <= floors:
             problems.append(f"{name} {floor} is outside floors 1..{floors}")
     if request.source == request.dest:
         problems.append(f"source and dest are both {request.source}")
@@ -86,6 +94,8 @@ def _validated(
     seen: set[str] = set()
     for label, request in labelled:
         found.extend((label, problem) for problem in _problems_with(request, floors))
+        if not isinstance(request.id, str):
+            continue
         if request.id and request.id in seen:
             found.append((label, f"duplicate id {request.id!r}"))
         seen.add(request.id)
@@ -104,8 +114,11 @@ def _parse_int(name: str, text: str, problems: list[str]) -> int:
 
 def load_requests(path: Path, floors: int) -> list[Request]:
     """Read and validate a CSV of requests. Row numbers count the header as row 1."""
-    with path.open(encoding="utf-8-sig", newline="") as file:
-        rows = list(csv.reader(file))
+    try:
+        with path.open(encoding="utf-8-sig", newline="") as file:
+            rows = list(csv.reader(file))
+    except (UnicodeDecodeError, csv.Error) as error:
+        raise InputValidationError([f"{path}: {error}"]) from None
     if not rows or rows[0] != CSV_HEADER:
         raise InputValidationError([f"{path}: header must be {','.join(CSV_HEADER)}"])
 

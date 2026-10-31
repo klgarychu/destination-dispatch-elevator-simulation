@@ -1,6 +1,7 @@
 """Simulated requests and load calibration (spec section 12)."""
 
 import csv
+import math
 import random
 import statistics
 import tomllib
@@ -10,7 +11,13 @@ from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from elevator_sim.config import ConfigError, SimConfig, load_config
+from elevator_sim.config import (
+    ConfigError,
+    SimConfig,
+    check_workers,
+    is_whole_number,
+    load_config,
+)
 from elevator_sim.engine import SimulationResult, simulate
 from elevator_sim.requests import CSV_HEADER, Request, load_requests
 
@@ -29,6 +36,11 @@ LOADS = {"light": 0.3, "medium": 0.6, "heavy": 0.9, "overload": 1.2}
 SEEDS = (1, 2, 3, 4, 5)
 ARRIVAL_TICKS = 1000
 CALIBRATION_SEEDS = (1, 2, 3)
+# The most requests the generator will expect to make. The PDF sets no limit, but a high enough
+# rate never finishes: 1e9 per tick for 1,000 ticks would need a trillion requests. This value only
+# has to stop runaway settings, so it is about 2,200 times the largest suite input (4,548 requests),
+# and it still fits on the development PC, at about 1.5 GB and 30 seconds (M21).
+MAX_GENERATED_REQUESTS = 10_000_000
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,8 +92,15 @@ def generate_requests(
     """Poisson arrivals: exponential gaps, with the running time rounded down to a tick."""
     if pattern not in PATTERNS:
         raise ConfigError(f"unknown pattern {pattern!r}: use {', '.join(PATTERNS)}")
-    if rate <= 0:
-        raise ConfigError(f"rate must be positive, not {rate}")
+    if isinstance(rate, bool) or not isinstance(rate, int | float) or not 0 < rate < math.inf:
+        raise ConfigError(f"rate must be a positive finite number, not {rate!r}")
+    if not is_whole_number(ticks) or ticks < 1:
+        raise ConfigError(f"ticks must be a whole number of at least 1, not {ticks!r}")
+    if not is_whole_number(floors) or floors < 2:
+        raise ConfigError(f"floors must be a whole number of at least 2, not {floors!r}")
+    if ticks > MAX_GENERATED_REQUESTS / rate:
+        limit = f"{MAX_GENERATED_REQUESTS:,}"
+        raise ConfigError(f"rate {rate} for {ticks} ticks expects more than {limit} requests")
     mix = PATTERNS[pattern]
     if mix is not None and floors < 3:
         raise ConfigError(f"pattern {pattern!r} needs at least 3 floors for interfloor trips")
@@ -114,11 +133,22 @@ def load_rates(path: Path = RATES_FILE) -> dict[str, dict[str, float]]:
             return tomllib.load(file)
     except FileNotFoundError:
         raise ConfigError(f"{path} not found: run generate --calibrate first") from None
+    except (tomllib.TOMLDecodeError, UnicodeDecodeError) as error:
+        raise ConfigError(f"{path}: {error}") from None
+
+
+def _rate_for(spec: InputSpec, rates: dict[str, dict[str, float]]) -> float:
+    table = rates.get(spec.building)
+    rate = table.get(spec.pattern) if isinstance(table, dict) else None
+    if isinstance(rate, bool) or not isinstance(rate, int | float):
+        name = f"{spec.building} {spec.pattern}"
+        raise ConfigError(f"no usable rate for {name}: run generate --calibrate")
+    return rate
 
 
 def input_requests(spec: InputSpec, rates: dict[str, dict[str, float]]) -> list[Request]:
     config = building_config(spec.building)
-    rate = rates[spec.building][spec.pattern] * LOADS[spec.load]
+    rate = _rate_for(spec, rates) * LOADS[spec.load]
     seed = input_seed(spec.building, spec.pattern, spec.load, spec.seed)
     return generate_requests(spec.pattern, rate, ARRIVAL_TICKS, seed, config.floors)
 
@@ -209,6 +239,7 @@ def write_rates(path: Path, rates: dict[str, dict[str, float]]) -> None:
 
 def calibrate(buildings: Sequence[str], workers: int, out: Path = RATES_FILE) -> None:
     """Measure rates for these buildings, keeping any others already in the file."""
+    check_workers(workers)
     rates = load_rates(out) if out.exists() else {}
     pairs = [(building, pattern) for building in buildings for pattern in PATTERNS]
     with ProcessPoolExecutor(max_workers=workers) as pool:

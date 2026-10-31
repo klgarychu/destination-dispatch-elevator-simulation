@@ -1,5 +1,6 @@
 """TST-15: the generator is repeatable, and traffic mix and rates are within tolerance."""
 
+import random
 from pathlib import Path
 
 import pytest
@@ -8,13 +9,16 @@ from elevator_sim.config import ConfigError, SimConfig
 from elevator_sim.engine import simulate
 from elevator_sim.requests import Request, load_requests
 from elevator_sim.workload import (
+    InputSpec,
     backlog_at,
     backlog_growth,
     bisect_highest_rate,
     ensure_inputs,
     generate_requests,
     input_name,
+    input_requests,
     input_seed,
+    load_rates,
     suite_inputs,
     write_requests,
 )
@@ -150,6 +154,81 @@ def test_an_unknown_pattern_is_rejected() -> None:
 def test_a_rate_must_be_positive() -> None:
     with pytest.raises(ConfigError, match="rate"):
         generate_requests("uniform", 0, 100, 1, 10)
+
+
+@pytest.fixture
+def bounded_generator(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Turns a generator loop that would never end into a quick test failure."""
+
+    class Bounded(random.Random):
+        calls = 0
+
+        def expovariate(self, lambd: float = 1.0) -> float:
+            Bounded.calls += 1
+            assert Bounded.calls < 1000, "the generator is not stopping"
+            return super().expovariate(lambd)
+
+    monkeypatch.setattr("elevator_sim.workload.random.Random", Bounded)
+
+
+@pytest.mark.usefixtures("bounded_generator")
+@pytest.mark.parametrize(
+    ("rate", "ticks", "floors", "named"),
+    [
+        (float("nan"), 10, 3, "rate"),
+        (float("inf"), 10, 3, "rate"),
+        (-1.0, 10, 3, "rate"),
+        ("fast", 10, 3, "rate"),
+        (True, 10, 3, "rate"),
+        (1.0, 0, 3, "ticks"),
+        (1.0, -10, 3, "ticks"),
+        (1.0, 1.5, 3, "ticks"),
+        (1.0, 10, 1, "floors"),
+        (1.0, 10, 2.5, "floors"),
+        (1e9, 1000, 3, "requests"),
+    ],
+)
+def test_the_generator_refuses_what_it_cannot_honour(
+    rate: object, ticks: object, floors: object, named: str
+) -> None:
+    with pytest.raises(ConfigError, match=named):
+        generate_requests("uniform", rate, ticks, 1, floors)  # type: ignore[arg-type]  # bad values
+
+
+@pytest.mark.usefixtures("bounded_generator")
+def test_the_generator_limit_is_on_the_expected_number_of_requests(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("elevator_sim.workload.MAX_GENERATED_REQUESTS", 100)
+
+    assert generate_requests("uniform", 1.0, 100, 1, 3)
+    with pytest.raises(ConfigError, match="requests"):
+        generate_requests("uniform", 1.0, 101, 1, 3)
+
+
+def test_a_rates_file_that_is_not_toml_is_refused(tmp_path: Path) -> None:
+    file = tmp_path / "rates.toml"
+    file.write_text("[baseline\n", encoding="utf-8")
+
+    with pytest.raises(ConfigError, match=r"rates\.toml"):
+        load_rates(file)
+
+
+def test_a_rates_file_that_is_not_utf_8_is_refused(tmp_path: Path) -> None:
+    file = tmp_path / "rates.toml"
+    file.write_bytes(b'[baseline]\nnote = "caf\xe9"\n')
+
+    with pytest.raises(ConfigError, match=r"rates\.toml"):
+        load_rates(file)
+
+
+@pytest.mark.parametrize(
+    "rates",
+    [{}, {"baseline": 3}, {"baseline": {}}, {"baseline": {"lunch": "fast"}}],
+)
+def test_a_missing_or_unusable_rate_is_refused(rates: dict[str, dict[str, float]]) -> None:
+    with pytest.raises(ConfigError, match="baseline lunch"):
+        input_requests(InputSpec("baseline", "lunch", "light", 1), rates)
 
 
 def test_backlog_counts_passengers_still_travelling_at_the_tick() -> None:

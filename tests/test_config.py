@@ -57,6 +57,47 @@ def test_tst12_rejects_invalid_settings(settings: dict[str, int | str]) -> None:
         SimConfig(**settings)  # type: ignore[arg-type]  # deliberately passes bad values
 
 
+@pytest.mark.parametrize(
+    "settings",
+    [
+        {"floors": 2.5},
+        {"elevators": 1.5},
+        {"capacity": True},
+        {"start_floor": 1.0},
+        {"max_ticks": 1.5},
+        {"max_ticks": True},
+        {"algorithm": ["eta"]},
+        {"behaviour": ["min_time"]},
+    ],
+)
+def test_tst12_rejects_settings_of_the_wrong_type(settings: dict[str, object]) -> None:
+    with pytest.raises(ConfigError):
+        SimConfig(**settings)  # type: ignore[arg-type]  # deliberately passes bad values
+
+
+@pytest.mark.parametrize(
+    ("toml", "named"),
+    [
+        ("building = 3\n", "building"),
+        ("dispatch = 3\n", "dispatch"),
+        ("[building]\ncapacity = true\n", "capacity"),
+        ("[building]\nelevators = true\n", "elevators"),
+        ('[dispatch]\nbehaviour = ["min_time"]\n', "behaviour"),
+    ],
+)
+def test_tst12_rejects_a_badly_shaped_toml_value(tmp_path: Path, toml: str, named: str) -> None:
+    with pytest.raises(ConfigError, match=named):
+        load_config(write_toml(tmp_path, toml))
+
+
+def test_tst12_rejects_a_settings_file_that_is_not_utf_8(tmp_path: Path) -> None:
+    file = tmp_path / "config.toml"
+    file.write_bytes(b'[dispatch]\nalgorithm = "caf\xe9"\n')
+
+    with pytest.raises(ConfigError, match=r"config\.toml"):
+        load_config(file)
+
+
 def test_tst12_rejects_an_unknown_setting(tmp_path: Path) -> None:
     file = write_toml(tmp_path, "[building]\nstoreys = 10\n")
 

@@ -215,6 +215,65 @@ def test_tst17_generated_file_runs_through_every_step(tmp_path: Path) -> None:
     assert main(["run", "--requests", str(file), "--config", baseline, "--out", str(tmp_path)]) == 0
 
 
+def test_tst17_a_requests_file_that_is_not_utf_8_exits_2(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    file = tmp_path / "latin.csv"
+    file.write_bytes(b"time,id,source,dest\n0,caf\xe9,1,2\n")
+
+    assert main(["run", "--requests", str(file), "--out", str(tmp_path / "out")]) == 2
+    assert "latin.csv" in capsys.readouterr().err
+
+
+def test_tst17_a_badly_shaped_config_exits_2(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config = tmp_path / "bad.toml"
+    config.write_text("building = 3\n", encoding="utf-8")
+
+    code = main(["run", "--requests", SAMPLE, "--config", str(config), "--out", str(tmp_path)])
+
+    assert code == 2
+    assert "building" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("options", "named"),
+    [
+        (["--rate", "nan"], "rate"),
+        (["--rate", "1", "--ticks", "-5"], "ticks"),
+    ],
+)
+def test_tst17_generate_refuses_bad_values_and_writes_nothing(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], options: list[str], named: str
+) -> None:
+    out = tmp_path / "requests.csv"
+
+    assert main(["generate", "--pattern", "uniform", *options, "--out", str(out)]) == 2
+
+    assert named in capsys.readouterr().err
+    assert not out.exists()
+
+
+@pytest.mark.parametrize("workers", ["0", "-1"])
+def test_tst17_compare_refuses_a_worker_count_below_one(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], workers: str
+) -> None:
+    out = str(tmp_path / "out")
+
+    assert main(["compare", "--requests", SAMPLE, "--workers", workers, "--out", out]) == 2
+    assert "workers" in capsys.readouterr().err
+
+
+def test_tst17_calibration_refuses_a_worker_count_below_one(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    rates = str(tmp_path / "rates.toml")
+
+    assert main(["generate", "--calibrate", "--workers", "0", "--out", rates]) == 2
+    assert "workers" in capsys.readouterr().err
+
+
 def test_tst17_module_entry_point_runs_with_no_traceback_on_bad_input(tmp_path: Path) -> None:
     done = subprocess.run(
         [

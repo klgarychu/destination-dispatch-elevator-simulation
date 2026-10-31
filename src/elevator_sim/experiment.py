@@ -19,7 +19,7 @@ from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any
 
-from elevator_sim.config import ALGORITHMS, SimConfig, config_id, settings_record
+from elevator_sim.config import ALGORITHMS, SimConfig, check_workers, config_id, settings_record
 from elevator_sim.engine import SimulationStalledError, simulate
 from elevator_sim.metrics import run_stats, total_time, wait_time
 from elevator_sim.output import MANIFEST_FILE, write_csv, write_json, write_manifest, write_run
@@ -330,6 +330,7 @@ def write_statistics(rows: Sequence[dict[str, Any]], out: Path) -> None:
 
 
 def run_suite(tasks: Sequence[Task], out: Path, workers: int) -> SuiteOutcome:
+    check_workers(workers)
     out.mkdir(parents=True, exist_ok=True)
     # Removed first and written last, so an interrupted suite can't leave it beside changed runs.
     (out / MANIFEST_FILE).unlink(missing_ok=True)
