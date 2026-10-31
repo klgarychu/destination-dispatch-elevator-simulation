@@ -46,6 +46,7 @@ TITLES = {
     "load_response": "Mean total time as load rises, by algorithm",
     "car_movement": "Car movement over the first 200 ticks, by algorithm",
 }
+FONTS = ["Segoe UI", "DejaVu Sans"]
 FIXED_DISTANCE_NOTE = "Total time is wait time plus a fixed distance."
 _SPREAD_NOTE = "Lines show the range across seeds. Gaps smaller than that range are noise."
 
@@ -56,6 +57,11 @@ _GRID = "#e1e0d9"
 _AXIS = "#c3c2b7"
 _SAMPLE_INPUT = "up_peak_heavy_s1"
 _CAR_MOVEMENT_TICKS = 200
+# Room for the longest note, which ends at about 10.9 inches in the wider fallback font. Below this
+# a chart of one input loses its notes and legend. The narrowest suite chart held to this is exactly
+# 11 inches wide, so suite charts keep their size. The car movement chart isn't held to it, because
+# its notes are short and it is 10 inches wide.
+_MIN_WIDTH = 11.0
 _WHOLE_TICKS = FuncFormatter(lambda value, _: f"{value:,.0f}")
 
 
@@ -81,7 +87,7 @@ def _style_axes(axes: Axes) -> None:
 
 
 def _figure(rows: int, columns: int, width: float, height: float) -> tuple[Figure, Any]:
-    plt.rcParams["font.family"] = ["Segoe UI", "DejaVu Sans"]
+    plt.rcParams["font.family"] = FONTS
     figure, axes = plt.subplots(
         rows, columns, figsize=(width, height), squeeze=False, sharey="row", facecolor=_SURFACE
     )
@@ -172,9 +178,8 @@ def _algorithm_comparison(rows: Sequence[dict[str, str]], path: Path) -> None:
     patterns = _in_order((row["pattern"] for row in rows), list(PATTERNS))
     loads = _in_order((row["load"] for row in rows), list(LOADS))
     algorithms = fixed_order(_algorithm(row) for row in rows)
-    figure, axes = _figure(
-        len(loads), len(patterns), 2.6 * len(patterns) + 0.6, 2.0 * len(loads) + 1.0
-    )
+    width = max(2.6 * len(patterns) + 0.6, _MIN_WIDTH)
+    figure, axes = _figure(len(loads), len(patterns), width, 2.0 * len(loads) + 1.0)
     for row_index, load in enumerate(loads):
         for column, pattern in enumerate(patterns):
             axis = axes[row_index][column]
@@ -301,9 +306,10 @@ def _distributions(stats: Path, run_ids: Sequence[str], building: str, path: Pat
 
 def _distribution_figure(loads: int) -> tuple[Figure, Any]:
     """Two rows, sharing one axis, so that every load can be compared directly."""
-    plt.rcParams["font.family"] = ["Segoe UI", "DejaVu Sans"]
+    plt.rcParams["font.family"] = FONTS
+    width = max(2.8 * loads + 0.8, _MIN_WIDTH)
     return plt.subplots(
-        2, loads, figsize=(2.8 * loads + 0.8, 6.4), squeeze=False, sharey=True, facecolor=_SURFACE
+        2, loads, figsize=(width, 6.4), squeeze=False, sharey=True, facecolor=_SURFACE
     )
 
 
@@ -311,9 +317,8 @@ def _fairness_vs_efficiency(rows: Sequence[dict[str, str]], path: Path) -> None:
     patterns = _in_order((row["pattern"] for row in rows), list(PATTERNS))
     loads = _in_order((row["load"] for row in rows), list(LOADS))
     algorithms = fixed_order(_algorithm(row) for row in rows)
-    figure, axes = _figure(
-        len(loads), len(patterns), 2.6 * len(patterns) + 0.6, 2.2 * len(loads) + 1.0
-    )
+    width = max(2.6 * len(patterns) + 0.6, _MIN_WIDTH)
+    figure, axes = _figure(len(loads), len(patterns), width, 2.2 * len(loads) + 1.0)
     for row_index, load in enumerate(loads):
         for column, pattern in enumerate(patterns):
             axis = axes[row_index][column]
@@ -362,7 +367,7 @@ def _load_response(rows: Sequence[dict[str, str]], path: Path) -> None:
     patterns = _in_order((row["pattern"] for row in rows), list(PATTERNS))
     loads = _in_order((row["load"] for row in rows), list(LOADS))
     algorithms = fixed_order(_algorithm(row) for row in rows)
-    figure, axes = _figure(1, len(patterns), 3.0 * len(patterns) + 0.6, 4.4)
+    figure, axes = _figure(1, len(patterns), max(3.0 * len(patterns) + 0.6, _MIN_WIDTH), 4.4)
     for column, pattern in enumerate(patterns):
         axis = axes[0][column]
         _panel_label(axis, pattern)

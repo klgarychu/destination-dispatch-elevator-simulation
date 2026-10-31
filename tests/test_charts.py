@@ -3,6 +3,7 @@
 import csv
 import random
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -324,6 +325,27 @@ def test_tst17_charts_stop_on_a_run_list_they_cannot_read(
     assert draw(out, tmp_path / "charts") == 2
 
     assert "run compare" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("fonts", [["Segoe UI", "DejaVu Sans"], ["DejaVu Sans"]])
+def test_tst18_titles_notes_and_legends_fit_a_chart_of_one_input(
+    stats: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fonts: list[str]
+) -> None:
+    import matplotlib.pyplot as plt
+
+    kept: list[Any] = []
+    monkeypatch.setattr("elevator_sim.charts.FONTS", fonts)
+    monkeypatch.setattr("elevator_sim.charts.plt.close", kept.append)
+
+    assert draw(stats, tmp_path) == 0
+
+    assert len(kept) == 4
+    for figure in kept:
+        renderer = figure.canvas.get_renderer()
+        for artist in [*figure.texts, *figure.legends]:
+            assert artist.get_window_extent(renderer).x1 <= figure.bbox.x1
+    monkeypatch.undo()
+    plt.close("all")
 
 
 def test_tst18_each_algorithm_has_one_distinct_colour_and_marker() -> None:
