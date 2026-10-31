@@ -225,6 +225,18 @@ def test_tst17_a_requests_file_that_is_not_utf_8_exits_2(
     assert "latin.csv" in capsys.readouterr().err
 
 
+def test_tst17_a_bad_file_gives_a_readable_error_with_several_workers(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    file = tmp_path / "bad.csv"
+    file.write_text("time,id,source,dest\n0,a,1,99\n", encoding="utf-8")
+    out = str(tmp_path / "out")
+
+    assert main(["compare", "--requests", str(file), "--workers", "2", "--out", out]) == 2
+
+    assert "row 2: dest 99 is outside floors 1..10" in capsys.readouterr().err
+
+
 def test_tst17_a_badly_shaped_config_exits_2(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

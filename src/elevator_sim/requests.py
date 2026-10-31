@@ -18,6 +18,10 @@ class InputValidationError(ValueError):
         self.problems = tuple(problems)
         super().__init__("invalid requests:\n  " + "\n  ".join(self.problems))
 
+    def __reduce__(self) -> tuple[object, ...]:
+        """Rebuild from the problems, not the message, when a worker process sends this back."""
+        return type(self), (self.problems,)
+
 
 class Direction(IntEnum):
     DOWN = -1

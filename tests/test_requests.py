@@ -1,3 +1,4 @@
+import pickle
 from pathlib import Path
 
 import pytest
@@ -128,6 +129,15 @@ def test_tst03_rejects_a_file_the_csv_reader_cannot_parse(tmp_path: Path) -> Non
 
     with pytest.raises(InputValidationError, match=r"requests\.csv"):
         load_requests(file, floors=5)
+
+
+def test_tst03_an_input_error_keeps_its_problems_between_processes() -> None:
+    error = InputValidationError(["row 2: dest 99 is outside floors 1..5"])
+
+    copy = pickle.loads(pickle.dumps(error))
+
+    assert copy.problems == error.problems
+    assert str(copy) == str(error)
 
 
 def test_tst03_validate_requests_sorts_a_list() -> None:
