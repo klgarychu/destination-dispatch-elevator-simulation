@@ -12,8 +12,9 @@ from elevator_sim.workload import (
     InputSpec,
     backlog_at,
     backlog_growth,
-    bisect_highest_rate,
+    check_load_levels,
     ensure_inputs,
+    find_rate_boundary,
     generate_requests,
     input_name,
     input_requests,
@@ -264,10 +265,60 @@ def test_a_flooded_car_shows_a_growing_backlog_and_a_quiet_car_does_not() -> Non
     assert backlog_growth(flooded) > 150
 
 
-def test_bisection_finds_the_highest_passing_rate_to_two_decimals() -> None:
-    assert bisect_highest_rate(lambda rate: rate <= 0.37) == pytest.approx(0.37)
-    assert bisect_highest_rate(lambda rate: rate <= 2.91) == pytest.approx(2.91)
+def test_the_search_finds_where_one_hundredth_more_fails() -> None:
+    assert find_rate_boundary(lambda rate: rate <= 0.37) == pytest.approx(0.37)
+    assert find_rate_boundary(lambda rate: rate <= 2.91) == pytest.approx(2.91)
 
 
-def test_bisection_stops_at_the_lowest_rate_if_nothing_passes() -> None:
-    assert bisect_highest_rate(lambda rate: False) == pytest.approx(0.01)
+def test_the_search_accepts_the_lowest_rate_once_it_has_really_passed() -> None:
+    assert find_rate_boundary(lambda rate: rate <= 0.01) == pytest.approx(0.01)
+
+
+def test_the_search_tests_the_lowest_rate_and_refuses_if_nothing_passes() -> None:
+    tested: list[float] = []
+
+    def passes(rate: float) -> bool:
+        tested.append(rate)
+        return False
+
+    with pytest.raises(ConfigError, match="no passing rate"):
+        find_rate_boundary(passes)
+
+    assert tested == [0.01]
+
+
+def test_the_search_stops_and_refuses_if_nothing_fails() -> None:
+    tested: list[float] = []
+
+    def passes(rate: float) -> bool:
+        tested.append(rate)
+        assert len(tested) < 40, "the search is not stopping"
+        return True
+
+    with pytest.raises(ConfigError, match="no failing rate"):
+        find_rate_boundary(passes)
+
+
+def test_the_search_finds_one_edge_when_a_higher_rate_also_passes() -> None:
+    def passes(rate: float) -> bool:
+        return rate <= 0.50 or 1.00 <= rate <= 1.20
+
+    found = find_rate_boundary(passes)
+
+    assert found == pytest.approx(0.50)
+    assert passes(found)
+    assert not passes(found + 0.01)
+
+
+def test_a_rate_is_accepted_when_heavy_passes_and_overload_fails() -> None:
+    check_load_levels(2.0, lambda rate: rate <= 2.0)
+
+
+def test_a_rate_is_refused_when_heavy_load_does_not_keep_up() -> None:
+    with pytest.raises(ConfigError, match="heavy"):
+        check_load_levels(2.0, lambda rate: rate < 1.0)
+
+
+def test_a_rate_is_refused_when_overload_is_not_past_capacity() -> None:
+    with pytest.raises(ConfigError, match="overload"):
+        check_load_levels(2.0, lambda rate: True)

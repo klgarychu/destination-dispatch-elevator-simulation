@@ -188,11 +188,19 @@ def backlog_growth(result: SimulationResult) -> int:
     return backlog_at(result, ARRIVAL_TICKS) - backlog_at(result, ARRIVAL_TICKS // 2)
 
 
-def bisect_highest_rate(passes: Callable[[float], bool]) -> float:
-    """Find the highest passing rate to two decimals, working in whole hundredths."""
+def find_rate_boundary(passes: Callable[[float], bool]) -> float:
+    """Find a passing rate, in whole hundredths, where one hundredth more fails.
+
+    Close to saturation, passing isn't strictly monotonic: a few rates can pass just above one that
+    fails. So this finds one edge of a narrow band, not a single true limit (M23).
+    """
+    if not passes(0.01):
+        raise ConfigError("calibration found no passing rate: even 0.01 per tick fails")
     low, high = 1, 2
     while passes(high / 100):
         low, high = high, high * 2
+        if high / 100 > MAX_GENERATED_REQUESTS / ARRIVAL_TICKS:
+            raise ConfigError(f"calibration found no failing rate, up to {low / 100} per tick")
     while high - low > 1:
         middle = (low + high) // 2
         if passes(middle / 100):
@@ -202,11 +210,24 @@ def bisect_highest_rate(passes: Callable[[float], bool]) -> float:
     return low / 100
 
 
+def check_load_levels(rate: float, passes: Callable[[float], bool]) -> None:
+    """Confirm the rate puts heavy load below the boundary and overload above it.
+
+    That is what the rate is for, and the search can't show it, because passing isn't strictly
+    monotonic near the boundary (M23).
+    """
+    if not passes(rate * LOADS["heavy"]):
+        raise ConfigError(f"calibrated rate {rate}: the fleet doesn't keep up with heavy load")
+    if passes(rate * LOADS["overload"]):
+        raise ConfigError(f"calibrated rate {rate}: the fleet keeps up with overload")
+
+
 def saturation_rate(building: str, pattern: str) -> float:
-    """The highest rate the fleet keeps up with, without a guard, so inputs stay fixed (M6).
+    """A measured saturation rate, without a guard, so inputs stay fixed (M6).
 
     A saturated fleet is one whose backlog keeps growing. The size of the backlog at one tick
-    can't show that, because it includes everyone simply in transit (G15).
+    can't show that, because it includes everyone simply in transit (G15). This is a working
+    measure from short runs on three seeds, not a proof of long-run capacity (M23).
     """
     config = replace(
         building_config(building), algorithm="marginal_insertion", behaviour="min_time"
@@ -220,7 +241,9 @@ def saturation_rate(building: str, pattern: str) -> float:
             growth.append(backlog_growth(simulate(requests, config)))
         return statistics.fmean(growth) <= config.elevators * config.capacity
 
-    return bisect_highest_rate(passes)
+    rate = find_rate_boundary(passes)
+    check_load_levels(rate, passes)
+    return rate
 
 
 def _calibrate_pair(pair: tuple[str, str]) -> tuple[str, str, float]:
