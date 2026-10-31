@@ -19,6 +19,7 @@ from elevator_sim.experiment import (
     source_fingerprint,
     suite_tasks,
 )
+from elevator_sim.output import read_manifest
 from elevator_sim.workload import suite_inputs
 
 SIX_ROWS = "time,id,source,dest\n0,a,1,5\n0,b,5,1\n2,c,3,8\n4,d,8,2\n9,e,1,9\n12,f,6,4\n"
@@ -186,7 +187,7 @@ def test_tst14_statistics_files_are_byte_identical_however_many_workers_run(
     one = compare(tmp_path, "one", workers=1)
     two = compare(tmp_path, "two", workers=2)
 
-    for name in ("simulation_stats.csv", "aggregate_stats.csv", "report.md"):
+    for name in ("simulation_stats.csv", "aggregate_stats.csv", "report.md", "run_manifest.json"):
         assert (one / name).read_bytes() == (two / name).read_bytes()
 
 
@@ -327,6 +328,26 @@ def test_a_stale_run_that_then_stalls_leaves_no_old_result(tmp_path: Path) -> No
     assert not (out / "runs" / "run.json").exists()
     assert not (out / "samples" / "input" / "eta__min_time__none__none").exists()
     assert read_rows(out / "simulation_stats.csv") == []
+
+
+def test_every_output_leaves_out_a_configuration_with_no_finished_runs(tmp_path: Path) -> None:
+    file = tmp_path / "input.csv"
+    file.write_text(SIX_ROWS, encoding="utf-8")
+    out = tmp_path / "out"
+    finished = [
+        Task(name, SimConfig(algorithm=name), 1, "b", "p", "l", 1, file)
+        for name in ("eta", "round_robin")
+    ]
+    run_suite(finished, out, workers=1)
+    stalled = replace(finished[1].config, max_ticks=1)
+
+    run_suite([finished[0], replace(finished[1], config=stalled)], out, workers=1)
+
+    assert column(out, "algorithm") == {"eta"}
+    assert read_manifest(out) == ["eta"]
+    assert [path.name for path in (out / "by_config").iterdir()] == [
+        "eta__min_time__none__none.csv"
+    ]
 
 
 def test_compare_says_how_many_runs_it_ran_and_how_many_it_reused(

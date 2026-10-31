@@ -22,6 +22,7 @@ from matplotlib.ticker import FixedLocator, FuncFormatter, LogLocator, NullLocat
 
 from elevator_sim.config import ALGORITHMS, ConfigError
 from elevator_sim.metrics import nearest_rank
+from elevator_sim.output import read_manifest
 from elevator_sim.workload import LOADS, PATTERNS
 
 COLOURS = {
@@ -189,9 +190,12 @@ def _algorithm_comparison(rows: Sequence[dict[str, str]], path: Path) -> None:
     )
 
 
-def _pooled_times(stats: Path, building: str) -> dict[tuple[str, str], dict[str, list[int]]]:
+def pooled_times(
+    stats: Path, run_ids: Sequence[str], building: str
+) -> dict[tuple[str, str], dict[str, list[int]]]:
     pooled: dict[tuple[str, str], dict[str, list[int]]] = {}
-    for path in sorted((stats / "runs").glob("*.json")):
+    for run_id in run_ids:
+        path = stats / "runs" / f"{run_id}.json"
         record = json.loads(path.read_text(encoding="utf-8"))
         if record["building"] != building:
             continue
@@ -215,8 +219,8 @@ def _box(values: Sequence[int], label: str) -> dict[str, Any]:
     }
 
 
-def _distributions(stats: Path, building: str, path: Path) -> None:
-    pooled = _pooled_times(stats, building)
+def _distributions(stats: Path, run_ids: Sequence[str], building: str, path: Path) -> None:
+    pooled = pooled_times(stats, run_ids, building)
     loads = _in_order((load for load, _ in pooled), list(LOADS))
     algorithms = fixed_order(name for _, name in pooled)
     figure, axes = _distribution_figure(len(loads))
@@ -373,11 +377,17 @@ def _load_response(rows: Sequence[dict[str, str]], path: Path) -> None:
     )
 
 
-def _car_movement(stats: Path, building: str, path: Path) -> None:
+def _car_movement(stats: Path, run_ids: Sequence[str], building: str, path: Path) -> None:
     sample = stats / "samples" / f"{building}_{_SAMPLE_INPUT}"
-    if not sample.exists():
+    current = set(run_ids)
+    # A sample is filed by input, then by configuration: the two parts of a run id.
+    runs = {
+        folder.name.split("__")[0]: folder
+        for folder in sample.glob("*")
+        if f"{folder.name}__{sample.name}" in current
+    }
+    if not runs:
         return
-    runs = {folder.name.split("__")[0]: folder for folder in sample.iterdir()}
     algorithms = fixed_order(runs)
     figure, axes = _figure(len(algorithms), 1, 10.0, 1.7 * len(algorithms) + 1.0)
     for row_index, name in enumerate(algorithms):
@@ -401,8 +411,13 @@ def _car_movement(stats: Path, building: str, path: Path) -> None:
 
 
 def write_charts(stats: Path, out: Path) -> list[Path]:
+    """Draw every chart from the same runs as the statistics, replacing any earlier charts."""
     rows = _read_aggregates(stats)
+    run_ids = read_manifest(stats)
     out.mkdir(parents=True, exist_ok=True)
+    for name in TITLES:
+        for earlier in out.glob(f"{name}_*.png"):
+            earlier.unlink()
     written = []
     for building in dict.fromkeys(row["building"] for row in rows):
         members = [row for row in rows if row["building"] == building]
@@ -415,10 +430,10 @@ def write_charts(stats: Path, out: Path) -> list[Path]:
             draw(members, target)
             written.append(target)
         target = out / f"distributions_{building}.png"
-        _distributions(stats, building, target)
+        _distributions(stats, run_ids, building, target)
         written.append(target)
         target = out / f"car_movement_{building}.png"
-        _car_movement(stats, building, target)
+        _car_movement(stats, run_ids, building, target)
         if target.exists():
             written.append(target)
     return written

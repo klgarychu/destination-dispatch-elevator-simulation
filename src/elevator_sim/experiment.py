@@ -2,7 +2,8 @@
 
 Each run saves its own JSON as it finishes, with a fingerprint of its input, settings and code, so
 a restarted suite reuses only runs that still match. Statistics are built afterwards in fixed task
-order, so they don't depend on the order runs finished in. Wall-clock times go only to
+order, so they don't depend on the order runs finished in, and a manifest lists exactly which runs
+they cover, because `runs/` can also hold runs from other comparisons. Wall-clock times go only to
 suite_log.csv, because every other file must stay byte-identical.
 """
 
@@ -21,7 +22,7 @@ from typing import Any
 from elevator_sim.config import ALGORITHMS, SimConfig, config_id, settings_record
 from elevator_sim.engine import SimulationStalledError, simulate
 from elevator_sim.metrics import run_stats, total_time, wait_time
-from elevator_sim.output import write_csv, write_json, write_run
+from elevator_sim.output import MANIFEST_FILE, write_csv, write_json, write_manifest, write_run
 from elevator_sim.report import render_report
 from elevator_sim.requests import load_requests
 from elevator_sim.workload import SEEDS, building_config, suite_inputs
@@ -313,6 +314,8 @@ def write_statistics(rows: Sequence[dict[str, Any]], out: Path) -> None:
     )
 
     (out / "by_config").mkdir(exist_ok=True)
+    for earlier in (out / "by_config").glob("*.csv"):
+        earlier.unlink()
     configs = dict.fromkeys(row["config_id"] for row in rows)
     for config in configs:
         members = [row for row in rows if row["config_id"] == config]
@@ -328,6 +331,10 @@ def write_statistics(rows: Sequence[dict[str, Any]], out: Path) -> None:
 
 def run_suite(tasks: Sequence[Task], out: Path, workers: int) -> SuiteOutcome:
     out.mkdir(parents=True, exist_ok=True)
+    # Removed first and written last, so an interrupted suite can't leave it beside changed runs.
+    (out / MANIFEST_FILE).unlink(missing_ok=True)
     outcome = run_tasks(tasks, out, workers)
-    write_statistics(load_rows(tasks, out), out)
+    rows = load_rows(tasks, out)
+    write_statistics(rows, out)
+    write_manifest(out, [row["run_id"] for row in rows])
     return outcome

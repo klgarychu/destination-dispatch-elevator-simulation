@@ -2,10 +2,11 @@
 
 import csv
 import json
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-from elevator_sim.config import settings_record
+from elevator_sim.config import ConfigError, settings_record
 from elevator_sim.engine import SimulationResult
 from elevator_sim.metrics import (
     TimeStats,
@@ -15,6 +16,7 @@ from elevator_sim.metrics import (
     wait_time,
 )
 
+MANIFEST_FILE = "run_manifest.json"
 PASSENGER_COLUMNS = [
     "id",
     "time",
@@ -41,6 +43,19 @@ def write_csv(path: Path, header: list[str], rows: list[list[Any]]) -> None:
 def write_json(path: Path, data: object) -> None:
     with path.open("w", encoding="utf-8", newline="") as file:
         file.write(json.dumps(data, indent=2) + "\n")
+
+
+def write_manifest(out: Path, run_ids: Sequence[str]) -> None:
+    write_json(out / MANIFEST_FILE, list(run_ids))
+
+
+def read_manifest(out: Path) -> list[str]:
+    """The runs in the comparison that made this folder's statistics, and no others."""
+    path = out / MANIFEST_FILE
+    if not path.exists():
+        raise ConfigError(f"no finished comparison at {path}: run compare first")
+    run_ids: list[str] = json.loads(path.read_text(encoding="utf-8"))
+    return run_ids
 
 
 def _rounded(stats: TimeStats | None) -> dict[str, float | int] | None:
