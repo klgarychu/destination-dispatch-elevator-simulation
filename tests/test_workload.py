@@ -11,9 +11,11 @@ from elevator_sim.workload import (
     backlog_at,
     backlog_growth,
     bisect_highest_rate,
+    ensure_inputs,
     generate_requests,
     input_name,
     input_seed,
+    suite_inputs,
     write_requests,
 )
 
@@ -111,6 +113,28 @@ def test_tst15_a_written_file_loads_back_the_same(tmp_path: Path) -> None:
     write_requests(file, requests)
 
     assert load_requests(file, floors=10) == requests
+
+
+def test_ensure_inputs_writes_missing_files_and_accepts_ones_that_match_the_rates(
+    tmp_path: Path,
+) -> None:
+    ensure_inputs(tmp_path, (1,))
+    written = {path.name: path.read_bytes() for path in tmp_path.iterdir()}
+
+    ensure_inputs(tmp_path, (1,))
+
+    assert len(written) == 32
+    assert {path.name: path.read_bytes() for path in tmp_path.iterdir()} == written
+
+
+def test_ensure_inputs_stops_on_a_file_that_no_longer_matches_the_rates(tmp_path: Path) -> None:
+    stale = tmp_path / next(suite_inputs((1,))).name
+    stale.write_text("time,id,source,dest\n0,only,1,2\n", encoding="utf-8")
+
+    with pytest.raises(ConfigError, match="generate --suite"):
+        ensure_inputs(tmp_path, (1,))
+
+    assert stale.read_text(encoding="utf-8") == "time,id,source,dest\n0,only,1,2\n"
 
 
 def test_patterns_need_three_floors_for_interfloor_trips() -> None:

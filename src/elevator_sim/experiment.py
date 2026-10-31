@@ -1,17 +1,20 @@
 """The simulation suite: parallel runs, resuming, and the statistics files.
 
-Each run saves its own JSON as it finishes, so a restarted suite skips completed runs. Statistics
-are built afterwards in fixed task order, so they don't depend on the order runs finished in.
-Wall-clock times go only to suite_log.csv, because every other file must stay byte-identical.
+Each run saves its own JSON as it finishes, with a fingerprint of its input, settings and code, so
+a restarted suite reuses only runs that still match. Statistics are built afterwards in fixed task
+order, so they don't depend on the order runs finished in. Wall-clock times go only to
+suite_log.csv, because every other file must stay byte-identical.
 """
 
 import csv
+import hashlib
 import json
+import shutil
 import statistics
 import time
 from collections.abc import Iterable, Sequence
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -70,6 +73,7 @@ _NOT_BUILT_YET = {
     "share_above_wait_limit": None,
 }
 _SAMPLES = {("up_peak", "heavy", 1), ("lunch", "overload", 1)}
+PACKAGE_DIR = Path(__file__).parent
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,6 +87,12 @@ class Task:
     seed: int
     input_path: Path
     sample: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class SuiteOutcome:
+    stalled: list[str]
+    reused: int
 
 
 def sample_inputs() -> set[tuple[str, str, str, int]]:
@@ -136,11 +146,50 @@ def file_tasks(requests: Path, building: SimConfig, building_name: str) -> list[
     ]
 
 
+def source_fingerprint(package: Path = PACKAGE_DIR) -> str:
+    """A hash of every source file, so a run saved by different code is never reused."""
+    digest = hashlib.sha256()
+    for path in sorted(package.rglob("*.py"), key=lambda path: path.as_posix()):
+        digest.update(path.relative_to(package).as_posix().encode())
+        digest.update(path.read_bytes())
+    return digest.hexdigest()
+
+
+def run_fingerprint(task: Task, source: str) -> str:
+    """Everything a saved run depends on, except where its input file is kept."""
+    contents = hashlib.sha256(task.input_path.read_bytes()).hexdigest()
+    identity = asdict(task) | {"input_path": contents, "source": source}
+    return hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
+
+
 def _rounded(value: int | float | None) -> int | float | None:
     return round(value, 4) if isinstance(value, float) else value
 
 
-def run_task(task: Task, out: Path) -> tuple[str, str, float]:
+def _run_file(task: Task, out: Path) -> Path:
+    return out / "runs" / f"{task.run_id}.json"
+
+
+def _sample_dir(task: Task, out: Path) -> Path:
+    return out / "samples" / task.input_path.stem / config_id(task.config)
+
+
+def _is_current(task: Task, fingerprint: str, out: Path) -> bool:
+    """Whether a run is saved, and can be shown to come from this input, settings and code."""
+    try:
+        record: dict[str, Any] = json.loads(_run_file(task, out).read_text(encoding="utf-8"))
+    except FileNotFoundError, json.JSONDecodeError:
+        return False
+    return record.get("fingerprint") == fingerprint
+
+
+def _discard(task: Task, out: Path) -> None:
+    """Remove a stale result first, so a run that then stalls can't leave it on show."""
+    _run_file(task, out).unlink(missing_ok=True)
+    shutil.rmtree(_sample_dir(task, out), ignore_errors=True)
+
+
+def run_task(task: Task, fingerprint: str, out: Path) -> tuple[str, str, float]:
     """Run one task, returning its id, status and seconds."""
     started = time.perf_counter()
     try:
@@ -148,9 +197,10 @@ def run_task(task: Task, out: Path) -> tuple[str, str, float]:
     except SimulationStalledError as error:
         return task.run_id, f"stalled: {error}", time.perf_counter() - started
     if task.sample:
-        write_run(result, out / "samples" / task.input_path.stem / config_id(task.config))
+        write_run(result, _sample_dir(task, out))
     record = {
         "run_id": task.run_id,
+        "fingerprint": fingerprint,
         "config_id": config_id(task.config),
         "stage": task.stage,
         "building": task.building,
@@ -166,7 +216,7 @@ def run_task(task: Task, out: Path) -> tuple[str, str, float]:
     # Written then renamed, so an interrupted suite can't leave half a result to resume from.
     partial = out / "runs" / f"{task.run_id}.partial"
     write_json(partial, record)
-    partial.replace(out / "runs" / f"{task.run_id}.json")
+    partial.replace(_run_file(task, out))
     return task.run_id, "ok", time.perf_counter() - started
 
 
@@ -178,11 +228,17 @@ def _log_writer(path: Path) -> Any:
     return file
 
 
-def run_tasks(tasks: Sequence[Task], out: Path, workers: int) -> list[str]:
-    """Run whatever isn't finished yet. Returns the ids of runs that stalled."""
+def run_tasks(tasks: Sequence[Task], out: Path, workers: int) -> SuiteOutcome:
+    """Run every task without a current saved result, and reuse the rest."""
     (out / "runs").mkdir(parents=True, exist_ok=True)
-    todo = [task for task in tasks if not (out / "runs" / f"{task.run_id}.json").exists()]
-    stalled = []
+    source = source_fingerprint()
+    todo = []
+    for task in tasks:
+        fingerprint = run_fingerprint(task, source)
+        if not _is_current(task, fingerprint, out):
+            _discard(task, out)
+            todo.append((task, fingerprint))
+    stalled: list[str] = []
     with _log_writer(out / "suite_log.csv") as log:
 
         def record(run_id: str, status: str, seconds: float) -> None:
@@ -193,21 +249,21 @@ def run_tasks(tasks: Sequence[Task], out: Path, workers: int) -> list[str]:
                 stalled.append(run_id)
 
         if workers == 1:
-            for task in todo:
-                record(*run_task(task, out))
+            for task, fingerprint in todo:
+                record(*run_task(task, fingerprint, out))
         else:
             with ProcessPoolExecutor(max_workers=workers) as pool:
-                futures = [pool.submit(run_task, task, out) for task in todo]
+                futures = [pool.submit(run_task, task, mark, out) for task, mark in todo]
                 for future in as_completed(futures):
                     record(*future.result())
-    return stalled
+    return SuiteOutcome(stalled, len(tasks) - len(todo))
 
 
 def load_rows(tasks: Iterable[Task], out: Path) -> list[dict[str, Any]]:
     """One flat row per finished run, in task order."""
     rows = []
     for task in tasks:
-        path = out / "runs" / f"{task.run_id}.json"
+        path = _run_file(task, out)
         if path.exists():
             record = json.loads(path.read_text(encoding="utf-8"))
             identity = {key: record[key] for key in _IDENTITY_COLUMNS}
@@ -270,8 +326,8 @@ def write_statistics(rows: Sequence[dict[str, Any]], out: Path) -> None:
         file.write(render_report(rows))
 
 
-def run_suite(tasks: Sequence[Task], out: Path, workers: int) -> list[str]:
+def run_suite(tasks: Sequence[Task], out: Path, workers: int) -> SuiteOutcome:
     out.mkdir(parents=True, exist_ok=True)
-    stalled = run_tasks(tasks, out, workers)
+    outcome = run_tasks(tasks, out, workers)
     write_statistics(load_rows(tasks, out), out)
-    return stalled
+    return outcome

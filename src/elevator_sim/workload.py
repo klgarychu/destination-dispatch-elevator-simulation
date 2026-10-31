@@ -12,7 +12,7 @@ from pathlib import Path
 
 from elevator_sim.config import ConfigError, SimConfig, load_config
 from elevator_sim.engine import SimulationResult, simulate
-from elevator_sim.requests import CSV_HEADER, Request
+from elevator_sim.requests import CSV_HEADER, Request, load_requests
 
 CONFIG_DIR = Path("configs")
 RATES_FILE = CONFIG_DIR / "load_rates.toml"
@@ -133,11 +133,15 @@ def write_suite(out: Path, seeds: Sequence[int] = SEEDS) -> int:
 
 
 def ensure_inputs(out: Path, seeds: Sequence[int] = SEEDS) -> None:
-    """Write any suite inputs that are missing, without touching the ones already there."""
+    """Write any missing suite inputs, and stop at one that no longer matches the rates."""
     rates = load_rates()
     for spec in suite_inputs(seeds):
-        if not (out / spec.name).exists():
-            write_requests(out / spec.name, input_requests(spec, rates))
+        path = out / spec.name
+        requests = input_requests(spec, rates)
+        if not path.exists():
+            write_requests(path, requests)
+        elif load_requests(path, building_config(spec.building).floors) != requests:
+            raise ConfigError(f"{path} doesn't match the current rates: run generate --suite")
 
 
 def backlog_at(result: SimulationResult, tick: int) -> int:

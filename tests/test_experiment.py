@@ -1,7 +1,7 @@
 """TST-16: separate statistics per configuration, correct aggregation, and repeatable files."""
 
 import csv
-import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -13,12 +13,17 @@ from elevator_sim.experiment import (
     STATS_COLUMNS,
     Task,
     aggregate,
+    run_suite,
     run_tasks,
     sample_inputs,
+    source_fingerprint,
     suite_tasks,
 )
+from elevator_sim.workload import suite_inputs
 
 SIX_ROWS = "time,id,source,dest\n0,a,1,5\n0,b,5,1\n2,c,3,8\n4,d,8,2\n9,e,1,9\n12,f,6,4\n"
+ONE_ROW = "time,id,source,dest\n0,a,1,2\n"
+TWO_ROWS = "time,id,source,dest\n0,a,1,2\n0,b,1,3\n"
 
 
 def read_rows(path: Path) -> list[dict[str, str]]:
@@ -33,6 +38,19 @@ def compare(tmp_path: Path, name: str, workers: int = 1) -> Path:
     code = main(["compare", "--requests", str(file), "--out", str(out), "--workers", str(workers)])
     assert code == 0
     return out
+
+
+def compare_file(file: Path, out: Path, *options: str) -> None:
+    arguments = ["compare", "--requests", str(file), "--out", str(out), "--workers", "1"]
+    assert main([*arguments, *options]) == 0
+
+
+def column(out: Path, name: str) -> set[str]:
+    return {row[name] for row in read_rows(out / "simulation_stats.csv")}
+
+
+def runs_executed(out: Path) -> int:
+    return len(read_rows(out / "suite_log.csv"))
 
 
 def test_tst16_stats_columns_are_the_ones_in_the_spec() -> None:
@@ -183,18 +201,159 @@ def test_compare_writes_a_timing_row_for_each_run_only_in_the_suite_log(tmp_path
     assert "seconds" not in (out / "simulation_stats.csv").read_text(encoding="utf-8")
 
 
-def test_a_restarted_suite_skips_finished_runs(tmp_path: Path) -> None:
+def test_tst14_a_restarted_suite_reuses_unchanged_runs_without_running_them(
+    tmp_path: Path,
+) -> None:
     out = compare(tmp_path, "out")
-    saved = out / "runs" / "eta__min_time__none__none__input.json"
-    marker = json.loads(saved.read_text(encoding="utf-8"))
-    marker["stats"]["passengers"] = 123
-    saved.write_text(json.dumps(marker), encoding="utf-8")
+    saved = {path.name: path.read_bytes() for path in (out / "runs").iterdir()}
 
     compare(tmp_path, "out")
 
-    rows = read_rows(out / "simulation_stats.csv")
-    assert next(row for row in rows if row["algorithm"] == "eta")["passengers"] == "123"
-    assert len(read_rows(out / "suite_log.csv")) == 5
+    assert {path.name: path.read_bytes() for path in (out / "runs").iterdir()} == saved
+    assert runs_executed(out) == 5
+
+
+def test_an_interrupted_suite_runs_only_what_is_missing(tmp_path: Path) -> None:
+    out = compare(tmp_path, "out")
+    (out / "runs" / "eta__min_time__none__none__input.json").unlink()
+    (out / "runs" / "round_robin__min_time__none__none__input.json").unlink()
+
+    compare(tmp_path, "out")
+
+    assert runs_executed(out) == 7
+    assert len(read_rows(out / "simulation_stats.csv")) == 5
+
+
+def test_a_saved_run_is_not_reused_once_its_input_changes(tmp_path: Path) -> None:
+    file = tmp_path / "input.csv"
+    file.write_text(ONE_ROW, encoding="utf-8")
+    compare_file(file, tmp_path / "out")
+
+    file.write_text(TWO_ROWS, encoding="utf-8")
+    compare_file(file, tmp_path / "out")
+
+    assert column(tmp_path / "out", "passengers") == {"2"}
+    assert runs_executed(tmp_path / "out") == 10
+
+
+def test_a_saved_run_is_not_reused_once_its_settings_change(tmp_path: Path) -> None:
+    file = tmp_path / "input.csv"
+    file.write_text(ONE_ROW, encoding="utf-8")
+    config = tmp_path / "custom.toml"
+    config.write_text("[building]\nstart_floor = 1\n", encoding="utf-8")
+    compare_file(file, tmp_path / "out", "--config", str(config))
+
+    config.write_text("[building]\nstart_floor = 5\n", encoding="utf-8")
+    compare_file(file, tmp_path / "out", "--config", str(config))
+
+    # A car now starts on floor 5: 4 ticks down to the passenger, then 1 tick of riding.
+    assert column(tmp_path / "out", "ticks") == {"5"}
+
+
+def test_a_saved_run_is_not_reused_for_a_different_file_with_the_same_name(tmp_path: Path) -> None:
+    first, second = tmp_path / "x" / "input.csv", tmp_path / "y" / "input.csv"
+    first.parent.mkdir()
+    second.parent.mkdir()
+    first.write_text(ONE_ROW, encoding="utf-8")
+    second.write_text(TWO_ROWS, encoding="utf-8")
+    compare_file(first, tmp_path / "out")
+
+    compare_file(second, tmp_path / "out")
+
+    assert column(tmp_path / "out", "passengers") == {"2"}
+
+
+def test_a_saved_run_is_not_reused_once_the_source_changes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    file = tmp_path / "input.csv"
+    file.write_text(ONE_ROW, encoding="utf-8")
+    compare_file(file, tmp_path / "out")
+
+    monkeypatch.setattr("elevator_sim.experiment.source_fingerprint", lambda: "different code")
+    compare_file(file, tmp_path / "out")
+
+    assert runs_executed(tmp_path / "out") == 10
+
+
+def test_the_source_fingerprint_covers_every_source_file(tmp_path: Path) -> None:
+    (tmp_path / "inner").mkdir()
+    (tmp_path / "top.py").write_text("a = 1\n", encoding="utf-8")
+    (tmp_path / "inner" / "deep.py").write_text("b = 2\n", encoding="utf-8")
+    original = source_fingerprint(tmp_path)
+
+    assert source_fingerprint(tmp_path) == original
+
+    (tmp_path / "inner" / "deep.py").write_text("b = 3\n", encoding="utf-8")
+
+    assert source_fingerprint(tmp_path) != original
+
+
+def test_a_saved_run_still_counts_when_the_same_input_moves_folder(tmp_path: Path) -> None:
+    first, second = tmp_path / "x" / "input.csv", tmp_path / "y" / "input.csv"
+    first.parent.mkdir()
+    second.parent.mkdir()
+    first.write_text(ONE_ROW, encoding="utf-8")
+    second.write_text(ONE_ROW, encoding="utf-8")
+    compare_file(first, tmp_path / "out")
+
+    compare_file(second, tmp_path / "out")
+
+    assert runs_executed(tmp_path / "out") == 5
+
+
+@pytest.mark.parametrize("contents", ["not json", '{"run_id": "made before fingerprints"}'])
+def test_a_saved_run_that_cannot_be_checked_is_run_again(tmp_path: Path, contents: str) -> None:
+    out = compare(tmp_path, "out")
+    (out / "runs" / "eta__min_time__none__none__input.json").write_text(contents, encoding="utf-8")
+
+    compare(tmp_path, "out")
+
+    assert runs_executed(out) == 6
+    assert column(out, "passengers") == {"6"}
+
+
+def test_a_stale_run_that_then_stalls_leaves_no_old_result(tmp_path: Path) -> None:
+    file = tmp_path / "input.csv"
+    file.write_text(SIX_ROWS, encoding="utf-8")
+    out = tmp_path / "out"
+    finished = Task("run", SimConfig(algorithm="eta"), 1, "b", "p", "l", 1, file, sample=True)
+    run_suite([finished], out, workers=1)
+    assert (out / "runs" / "run.json").exists()
+
+    outcome = run_suite([replace(finished, config=replace(finished.config, max_ticks=1))], out, 1)
+
+    assert outcome.stalled == ["run"]
+    assert not (out / "runs" / "run.json").exists()
+    assert not (out / "samples" / "input" / "eta__min_time__none__none").exists()
+    assert read_rows(out / "simulation_stats.csv") == []
+
+
+def test_compare_says_how_many_runs_it_ran_and_how_many_it_reused(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    out = compare(tmp_path, "out")
+    (out / "runs" / "eta__min_time__none__none__input.json").unlink()
+    capsys.readouterr()
+
+    compare(tmp_path, "out")
+
+    assert "Finished 5 of 5 runs (1 run, 4 reused)" in capsys.readouterr().out
+
+
+def test_compare_suite_stops_on_an_input_that_no_longer_matches_the_rates(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    inputs = tmp_path / "inputs"
+    inputs.mkdir()
+    (inputs / next(suite_inputs((1,))).name).write_text(ONE_ROW, encoding="utf-8")
+
+    code = main(
+        ["compare", "--suite", "--quick", "--inputs", str(inputs), "--out", str(tmp_path / "out")]
+    )
+
+    assert code == 2
+    assert "generate --suite" in capsys.readouterr().err
 
 
 def test_tst17_a_suite_matrix_has_every_configuration_on_every_input() -> None:

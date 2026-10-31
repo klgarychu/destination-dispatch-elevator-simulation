@@ -75,10 +75,12 @@ def _compare(args: argparse.Namespace) -> int:
         tasks = file_tasks(args.requests, config, building)
     else:
         raise ConfigError("compare needs --suite, or --requests with a file")
-    stalled = run_suite(tasks, args.out, args.workers)
-    print(f"Finished {len(tasks) - len(stalled)} of {len(tasks)} runs. Results are in {args.out}")
-    if stalled:
-        print(f"error: {len(stalled)} runs reached max_ticks", file=sys.stderr)
+    outcome = run_suite(tasks, args.out, args.workers)
+    finished = len(tasks) - len(outcome.stalled)
+    counts = f"{finished - outcome.reused} run, {outcome.reused} reused"
+    print(f"Finished {finished} of {len(tasks)} runs ({counts}). Results are in {args.out}")
+    if outcome.stalled:
+        print(f"error: {len(outcome.stalled)} runs reached max_ticks", file=sys.stderr)
         return EXIT_STALLED
     return EXIT_OK
 
