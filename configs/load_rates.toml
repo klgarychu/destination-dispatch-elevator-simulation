@@ -42,6 +42,12 @@ up_peak = 0.65
 down_peak = 0.72
 lunch = 1.07
 
+[6car-60floor-6cap-express]
+uniform = 1.13
+up_peak = 0.7
+down_peak = 0.69
+lunch = 1.08
+
 [9car-60floor-6cap]
 uniform = 2.12
 up_peak = 1.0

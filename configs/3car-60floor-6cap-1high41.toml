@@ -1,0 +1,10 @@
+# One express car for the top third: car 3 serves the lobby and floors 41-60.
+[building]
+floors = 60
+elevators = 3
+capacity = 6
+start_floor = 1
+
+[[express]]
+car = 3
+serves = "1,41-60"

@@ -70,14 +70,16 @@ def check_load_levels(rate: float, passes: Callable[[float], bool]) -> None:
         raise ConfigError(f"calibrated rate {rate}: the fleet keeps up with overload")
 
 
-def saturation_rate(building: str, pattern: str, config: SimConfig) -> float:
+def saturation_rate(
+    building: str, pattern: str, config: SimConfig, algorithm: str = "marginal_insertion"
+) -> float:
     """A measured saturation rate, without a guard, so inputs stay fixed (M6).
 
     A saturated fleet is one whose backlog keeps growing. The size of the backlog at one tick
     can't show that, because it includes everyone simply in transit (G15). This is a working
     measure from short runs on three seeds, not a proof of long-run capacity (M23).
     """
-    target = replace(config, algorithm="marginal_insertion", behaviour="min_time")
+    target = replace(config, algorithm=algorithm, behaviour="min_time")
 
     def passes(rate: float) -> bool:
         growth = []
@@ -92,9 +94,9 @@ def saturation_rate(building: str, pattern: str, config: SimConfig) -> float:
     return rate
 
 
-def _calibrate_pair(job: tuple[str, str, SimConfig]) -> tuple[str, str, float]:
-    building, pattern, config = job
-    return building, pattern, saturation_rate(building, pattern, config)
+def _calibrate_pair(job: tuple[str, str, SimConfig, str]) -> tuple[str, str, float]:
+    building, pattern, config, algorithm = job
+    return building, pattern, saturation_rate(building, pattern, config, algorithm)
 
 
 def write_rates(path: Path, rates: dict[str, dict[str, float]]) -> None:
@@ -106,11 +108,20 @@ def write_rates(path: Path, rates: dict[str, dict[str, float]]) -> None:
         file.write("\n".join(lines) + "\n")
 
 
-def calibrate(buildings: Mapping[str, SimConfig], workers: int, out: Path = RATES_FILE) -> None:
+def calibrate(
+    buildings: Mapping[str, SimConfig],
+    workers: int,
+    out: Path = RATES_FILE,
+    algorithm: str = "marginal_insertion",
+) -> None:
     """Measure rates for these buildings, keeping any others already in the file."""
     check_workers(workers)
     rates = load_rates(out) if out.exists() else {}
-    jobs = [(name, pattern, config) for name, config in buildings.items() for pattern in PATTERNS]
+    jobs = [
+        (name, pattern, config, algorithm)
+        for name, config in buildings.items()
+        for pattern in PATTERNS
+    ]
     with ProcessPoolExecutor(max_workers=workers) as pool:
         for building, pattern, rate in pool.map(_calibrate_pair, jobs):
             rates.setdefault(building, {})[pattern] = rate

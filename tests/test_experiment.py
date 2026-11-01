@@ -7,12 +7,14 @@ from pathlib import Path
 import pytest
 
 from elevator_sim.cli import main
-from elevator_sim.config import ALGORITHMS, SimConfig, config_id
+from elevator_sim.config import ALGORITHMS, ALL_ALGORITHMS, SimConfig, config_id
 from elevator_sim.experiment import (
     AGGREGATE_KEYS,
     STATS_COLUMNS,
+    SuiteOutcome,
     Task,
     aggregate,
+    express_tasks,
     run_suite,
     run_tasks,
     sample_inputs,
@@ -506,6 +508,102 @@ def test_m28_the_statistics_keep_the_two_load_bases_apart(tmp_path: Path) -> Non
         "own_limit",
         "fixed",
     ]
+
+
+def test_m30_the_express_suite_has_every_algorithm_on_every_case() -> None:
+    tasks = express_tasks(Path("data/generated"))
+
+    assert len(tasks) == 4800
+    assert len({task.run_id for task in tasks}) == 4800
+    assert {task.config.algorithm for task in tasks} == set(ALL_ALGORITHMS)
+    assert {task.building for task in tasks} == {
+        "3car-10floor-6cap",
+        "3car-60floor-6cap",
+        "6car-60floor-6cap",
+        "6car-60floor-6cap-express",
+        "3car-60floor-6cap-1high31",
+        "3car-60floor-6cap-1high41",
+        "3car-60floor-6cap-2high31",
+        "3car-60floor-6cap-split30",
+        "3car-60floor-6cap-overlap",
+    }
+
+
+def test_m30_express_cases_run_on_the_passengers_of_the_building_they_change() -> None:
+    tasks = express_tasks(Path("data/generated"))
+
+    def inputs(building: str, basis: str) -> set[str]:
+        return {
+            task.input_path.name
+            for task in tasks
+            if task.building == building
+            and task.load_basis == basis
+            and (task.pattern, task.load, task.seed) == ("lunch", "heavy", 2)
+        }
+
+    assert inputs("3car-60floor-6cap-split30", "fixed") == {"3car-60floor-6cap_lunch_heavy_s2.csv"}
+    assert inputs("6car-60floor-6cap-express", "fixed") == {"6car-60floor-6cap_lunch_heavy_s2.csv"}
+    assert inputs("6car-60floor-6cap-express", "own_limit") == {
+        "6car-60floor-6cap-express_lunch_heavy_s2.csv"
+    }
+    assert inputs("3car-60floor-6cap", "own_limit") == {"3car-60floor-6cap_lunch_heavy_s2.csv"}
+
+
+def test_m30_the_phase_1_cases_keep_their_run_ids_so_rows_can_be_compared() -> None:
+    phase_1 = {task.run_id: task for task in suite_tasks(Path("data/generated"))}
+    shared = [
+        task
+        for task in express_tasks(Path("data/generated"))
+        if task.building in ("3car-10floor-6cap", "3car-60floor-6cap", "6car-60floor-6cap")
+        and task.config.algorithm in ALGORITHMS
+    ]
+
+    assert len(shared) == 1200
+    for task in shared:
+        assert task.run_id in phase_1
+        assert task.input_path == phase_1[task.run_id].input_path
+        assert task.config == phase_1[task.run_id].config
+
+
+def test_m30_the_phase_1_suite_is_unchanged() -> None:
+    tasks = suite_tasks(Path("data/generated"))
+
+    assert len(tasks) == 6000
+    assert {task.config.algorithm for task in tasks} == set(ALGORITHMS)
+
+
+def test_m30_compare_runs_the_suite_of_the_phase_it_is_asked_for(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    asked: list[str] = []
+
+    def fake_run(tasks: list[Task], out: Path, workers: int) -> SuiteOutcome:
+        asked.append(tasks[0].building)
+        return SuiteOutcome([], 0)
+
+    monkeypatch.setattr("elevator_sim.cli.ensure_inputs", lambda *args: None)
+    monkeypatch.setattr("elevator_sim.cli.run_suite", fake_run)
+    out = str(tmp_path / "out")
+
+    assert main(["compare", "--suite", "--phase", "1", "--out", out]) == 0
+    assert main(["compare", "--suite", "--out", out]) == 0
+
+    assert asked == ["1car-10floor-6cap", "3car-10floor-6cap"]
+
+
+def test_m30_a_fixed_load_sample_keeps_its_logs_apart_from_the_run_that_shares_its_file(
+    tmp_path: Path,
+) -> None:
+    file = tmp_path / "input.csv"
+    file.write_text(SIX_ROWS, encoding="utf-8")
+    config = SimConfig(algorithm="eta")
+    own = Task("own", config, 1, "a", "p", "l", 1, file, sample=True)
+    fixed = Task("fixed", config, 1, "b", "p", "l", 1, file, sample=True, load_basis="fixed")
+
+    run_tasks([own, fixed], tmp_path, workers=1)
+
+    assert (tmp_path / "samples" / "input" / "eta__min_time__none__none").exists()
+    assert (tmp_path / "samples" / "b__input" / "eta__min_time__none__none").exists()
 
 
 def test_tst17_quick_suite_uses_seed_1_only() -> None:

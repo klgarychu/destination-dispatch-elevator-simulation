@@ -9,7 +9,7 @@ from pathlib import Path
 from elevator_sim.calibration import calibrate
 from elevator_sim.config import ConfigError, SimConfig, load_config
 from elevator_sim.engine import SimulationStalledError, simulate
-from elevator_sim.experiment import file_tasks, run_suite, suite_tasks
+from elevator_sim.experiment import express_tasks, file_tasks, run_suite, suite_tasks
 from elevator_sim.output import format_summary, summary_data, write_run
 from elevator_sim.requests import InputValidationError, load_requests
 from elevator_sim.workload import (
@@ -52,7 +52,7 @@ def _generate(args: argparse.Namespace) -> int:
             buildings = {args.config.stem: load_config(args.config)}
         else:
             buildings = {name: building_config(name) for name in BUILDINGS}
-        calibrate(buildings, args.workers, args.out or RATES_FILE)
+        calibrate(buildings, args.workers, args.out or RATES_FILE, args.algorithm)
     elif args.suite:
         if args.out is None:
             raise ConfigError("generate --suite needs --out")
@@ -72,7 +72,7 @@ def _compare(args: argparse.Namespace) -> int:
         if args.stage not in ("all", "1"):
             raise ConfigError("Stage 2 arrives in Phase 4")
         ensure_inputs(args.inputs, (SEEDS[0],) if args.quick else SEEDS)
-        tasks = suite_tasks(args.inputs, args.quick)
+        tasks = (suite_tasks if args.phase == 1 else express_tasks)(args.inputs, args.quick)
     elif args.requests:
         config = load_config(args.config) if args.config else SimConfig()
         building = args.config.stem if args.config else "custom"
@@ -126,7 +126,8 @@ def _parser() -> argparse.ArgumentParser:
     generate.add_argument("--seed", type=int, default=1)
     generate.add_argument("--config", type=Path)
     generate.add_argument("--out", type=Path)
-    generate.add_argument("--workers", type=int, default=12)
+    generate.add_argument("--workers", type=int, default=8)
+    generate.add_argument("--algorithm", default="marginal_insertion")
     generate.set_defaults(handler=_generate)
 
     compare = commands.add_parser("compare", help="run every configuration")
@@ -134,9 +135,10 @@ def _parser() -> argparse.ArgumentParser:
     compare.add_argument("--requests", type=Path)
     compare.add_argument("--config", type=Path)
     compare.add_argument("--stage", default="all")
+    compare.add_argument("--phase", type=int, choices=(1, 2), default=2)
     compare.add_argument("--quick", action="store_true")
     compare.add_argument("--inputs", type=Path, default=Path("data/generated"))
-    compare.add_argument("--workers", type=int, default=12)
+    compare.add_argument("--workers", type=int, default=8)
     compare.add_argument("--out", type=Path, required=True)
     compare.set_defaults(handler=_compare)
 

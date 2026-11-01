@@ -30,6 +30,23 @@ BUILDINGS = (
     "3car-60floor-9cap",
     "3car-60floor-12cap",
 )
+# Phase 2 (M30). Each express case runs on the passengers of the building it changes, so that a
+# difference comes from the express cars and not the traffic. EXPRESS_OWN_LIMIT also runs at its own
+# limits, which repeats Phase 1's runs and gives the 6-car express building its own traffic.
+EXPRESS_BUILDINGS = {
+    "3car-60floor-6cap-1high31": "3car-60floor-6cap",
+    "3car-60floor-6cap-1high41": "3car-60floor-6cap",
+    "3car-60floor-6cap-2high31": "3car-60floor-6cap",
+    "3car-60floor-6cap-split30": "3car-60floor-6cap",
+    "3car-60floor-6cap-overlap": "3car-60floor-6cap",
+    "6car-60floor-6cap-express": "6car-60floor-6cap",
+}
+EXPRESS_OWN_LIMIT = (
+    "3car-10floor-6cap",
+    "3car-60floor-6cap",
+    "6car-60floor-6cap",
+    "6car-60floor-6cap-express",
+)
 # Seeds keep the name each case first had, so renaming a case changes no request (M27).
 _FIRST_NAMES = {
     "1car-10floor-6cap": "simple",
@@ -91,8 +108,10 @@ def input_seed(building: str, pattern: str, load: str, seed: int) -> int:
     return zlib.crc32(f"{first_name}|{pattern}|{load}|{seed}".encode())
 
 
-def suite_inputs(seeds: Sequence[int] = SEEDS) -> Iterator[InputSpec]:
-    for building in BUILDINGS:
+def suite_inputs(
+    seeds: Sequence[int] = SEEDS, buildings: Sequence[str] = BUILDINGS
+) -> Iterator[InputSpec]:
+    for building in buildings:
         for pattern in PATTERNS:
             for load in LOADS:
                 for seed in seeds:
@@ -108,7 +127,7 @@ def fixed_inputs(seeds: Sequence[int] = SEEDS) -> Iterator[InputSpec]:
 
 def _input_files(seeds: Sequence[int]) -> dict[str, InputSpec]:
     """One spec per file, because cases can share a fixed-load file."""
-    specs = [*suite_inputs(seeds), *fixed_inputs(seeds)]
+    specs = [*suite_inputs(seeds), *fixed_inputs(seeds), *suite_inputs(seeds, EXPRESS_OWN_LIMIT)]
     return {spec.name: spec for spec in specs}
 
 

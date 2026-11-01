@@ -1,0 +1,14 @@
+# Two of six cars express for the top half.
+[building]
+floors = 60
+elevators = 6
+capacity = 6
+start_floor = 1
+
+[[express]]
+car = 5
+serves = "1,31-60"
+
+[[express]]
+car = 6
+serves = "1,31-60"

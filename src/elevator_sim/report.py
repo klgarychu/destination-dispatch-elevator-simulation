@@ -5,10 +5,13 @@ from collections.abc import Sequence
 from typing import Any
 
 from elevator_sim.config import ALL_ALGORITHMS
-from elevator_sim.workload import BUILDINGS, FIXED, FIXED_LOAD_CASE, LOADS, OWN_LIMIT, PATTERNS
+from elevator_sim.workload import BUILDINGS, EXPRESS_BUILDINGS, FIXED, LOADS, OWN_LIMIT, PATTERNS
 
 _COLUMNS = (
+    ("Min total", "total_min"),
     ("Mean total", "total_mean"),
+    ("Max total", "total_max"),
+    ("Min wait", "wait_min"),
     ("Mean wait", "wait_mean"),
     ("p95 wait", "wait_p95"),
     ("Max wait", "wait_max"),
@@ -26,7 +29,7 @@ def _group_key(row: dict[str, Any]) -> tuple[int, int, str, int, str, int, str]:
     building, pattern, load = row["building"], row["pattern"], row["load"]
     return (
         _place((OWN_LIMIT, FIXED), row["load_basis"]),
-        _place(BUILDINGS, building),
+        _place((*BUILDINGS, *EXPRESS_BUILDINGS), building),
         building,
         _place(list(PATTERNS), pattern),
         pattern,
@@ -105,9 +108,9 @@ def render_report(rows: Sequence[dict[str, Any]], not_finished: Sequence[str] = 
     if any(r["load_basis"] == FIXED for r in rows):
         lines += [
             "",
-            f"Sections marked fixed load give each case the same arrivals as {FIXED_LOAD_CASE}, "
-            "whose own sections are that load. Cases of another height keep the arrival ticks, "
-            "with floors drawn for their height.",
+            "Sections marked fixed load give a case the same arrivals as the building it is "
+            "compared with, whose own sections are that load. Cases of another height keep the "
+            "arrival ticks, with floors drawn for their height.",
         ]
     groups: dict[tuple[int, int, str, int, str, int, str], list[dict[str, Any]]] = {}
     for row in rows:

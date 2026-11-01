@@ -1,0 +1,14 @@
+# Low-rise and high-rise cars that overlap on floors 21-40, with car 1 serving every floor.
+[building]
+floors = 60
+elevators = 3
+capacity = 6
+start_floor = 1
+
+[[express]]
+car = 2
+serves = "1-40"
+
+[[express]]
+car = 3
+serves = "1,21-60"

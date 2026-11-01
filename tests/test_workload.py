@@ -5,10 +5,11 @@ from pathlib import Path
 
 import pytest
 
-from elevator_sim.config import ConfigError
+from elevator_sim.config import ConfigError, parse_serves
 from elevator_sim.requests import Request, load_requests
 from elevator_sim.workload import (
     BUILDINGS,
+    EXPRESS_BUILDINGS,
     FIXED_LOAD_CASE,
     InputSpec,
     building_config,
@@ -143,7 +144,7 @@ def test_ensure_inputs_writes_missing_files_and_accepts_ones_that_match_the_rate
 
     ensure_inputs(tmp_path, (1,))
 
-    assert len(written) == 160
+    assert len(written) == 176
     assert {path.name: path.read_bytes() for path in tmp_path.iterdir()} == written
 
 
@@ -344,8 +345,39 @@ def test_m28_another_height_keeps_the_traffic_mix() -> None:
 
 
 def test_m28_the_suite_writes_each_shared_file_once(tmp_path: Path) -> None:
-    assert write_suite(tmp_path, (1,)) == 160
-    assert len(list(tmp_path.iterdir())) == 160
+    assert write_suite(tmp_path, (1,)) == 176
+    assert len(list(tmp_path.iterdir())) == 176
+
+
+@pytest.mark.parametrize(
+    ("case", "express"),
+    [
+        ("3car-60floor-6cap-1high31", {3: "1,31-60"}),
+        ("3car-60floor-6cap-1high41", {3: "1,41-60"}),
+        ("3car-60floor-6cap-2high31", {2: "1,31-60", 3: "1,31-60"}),
+        ("3car-60floor-6cap-split30", {2: "1-30", 3: "1,31-60"}),
+        ("3car-60floor-6cap-overlap", {2: "1-40", 3: "1,21-60"}),
+        ("6car-60floor-6cap-express", {5: "1,31-60", 6: "1,31-60"}),
+    ],
+)
+def test_m30_each_express_case_has_the_cars_it_is_meant_to(
+    case: str, express: dict[int, str]
+) -> None:
+    config = building_config(case)
+    base = building_config(EXPRESS_BUILDINGS[case])
+
+    assert {car.car: car.serves for car in config.express} == {
+        car: parse_serves(floors) for car, floors in express.items()
+    }
+    assert (config.floors, config.elevators, config.capacity) == (
+        base.floors,
+        base.elevators,
+        base.capacity,
+    )
+
+
+def test_m30_express_cases_are_compared_with_the_building_they_change() -> None:
+    assert set(EXPRESS_BUILDINGS.values()) == {"3car-60floor-6cap", "6car-60floor-6cap"}
 
 
 def test_every_suite_building_has_a_rate_for_every_pattern() -> None:

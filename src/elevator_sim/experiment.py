@@ -19,7 +19,14 @@ from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any
 
-from elevator_sim.config import ALGORITHMS, SimConfig, check_workers, config_id, settings_record
+from elevator_sim.config import (
+    ALGORITHMS,
+    ALL_ALGORITHMS,
+    SimConfig,
+    check_workers,
+    config_id,
+    settings_record,
+)
 from elevator_sim.engine import SimulationStalledError, simulate
 from elevator_sim.metrics import run_stats, total_time, wait_time
 from elevator_sim.output import (
@@ -36,11 +43,15 @@ from elevator_sim.output import (
 from elevator_sim.report import render_report
 from elevator_sim.requests import load_requests
 from elevator_sim.workload import (
+    EXPRESS_BUILDINGS,
+    EXPRESS_OWN_LIMIT,
     FIXED,
     OWN_LIMIT,
     SEEDS,
+    InputSpec,
     building_config,
     fixed_inputs,
+    input_name,
     suite_inputs,
 )
 
@@ -162,6 +173,55 @@ def suite_tasks(inputs: Path, quick: bool = False) -> list[Task]:
     return tasks
 
 
+def _samples_this(spec: InputSpec) -> bool:
+    return (spec.pattern, spec.load, spec.seed) in _SAMPLES
+
+
+def express_tasks(inputs: Path, quick: bool = False) -> list[Task]:
+    """Phase 2 (M30): every algorithm on each case's own limit, then on shared passengers."""
+    seeds = (SEEDS[0],) if quick else SEEDS
+    tasks = []
+    for spec in suite_inputs(seeds, EXPRESS_OWN_LIMIT):
+        building = building_config(spec.building)
+        path = inputs / spec.name
+        for algorithm in ALL_ALGORITHMS:
+            config = replace(building, algorithm=algorithm)
+            tasks.append(
+                Task(
+                    f"{config_id(config)}__{path.stem}",
+                    config,
+                    1,
+                    spec.building,
+                    spec.pattern,
+                    spec.load,
+                    spec.seed,
+                    path,
+                    _samples_this(spec),
+                )
+            )
+    for case, base in EXPRESS_BUILDINGS.items():
+        building = building_config(case)
+        for spec in suite_inputs(seeds, (base,)):
+            path = inputs / input_name(base, spec.pattern, spec.load, spec.seed)
+            for algorithm in ALL_ALGORITHMS:
+                config = replace(building, algorithm=algorithm)
+                tasks.append(
+                    Task(
+                        f"{config_id(config)}__{case}__{FIXED}_{path.stem}",
+                        config,
+                        1,
+                        case,
+                        spec.pattern,
+                        spec.load,
+                        spec.seed,
+                        path,
+                        _samples_this(spec),
+                        FIXED,
+                    )
+                )
+    return tasks
+
+
 def file_tasks(requests: Path, building: SimConfig, building_name: str) -> list[Task]:
     """Every configuration on one request file."""
     return [
@@ -202,7 +262,10 @@ def _rounded(value: int | float | None) -> int | float | None:
 
 def _sample_dir(task: Task) -> str:
     """Where a run's full logs go, relative to the results folder."""
-    return f"samples/{task.input_path.stem}/{config_id(task.config)}"
+    # Cases can share a fixed-load file, so those folders name the case as well.
+    stem = task.input_path.stem
+    name = f"{task.building}__{stem}" if task.load_basis == FIXED else stem
+    return f"samples/{name}/{config_id(task.config)}"
 
 
 def _is_current(task: Task, fingerprint: str, out: Path) -> bool:

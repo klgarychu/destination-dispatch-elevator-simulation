@@ -7,6 +7,7 @@ from elevator_sim.calibration import (
     backlog_growth,
     check_load_levels,
     find_rate_boundary,
+    saturation_rate,
 )
 from elevator_sim.config import ConfigError, SimConfig
 from elevator_sim.engine import simulate
@@ -90,6 +91,18 @@ def test_the_search_finds_one_edge_when_a_higher_rate_also_passes() -> None:
     assert found == pytest.approx(0.50)
     assert passes(found)
     assert not passes(found + 0.01)
+
+
+def test_m30_calibration_can_measure_another_algorithms_limit() -> None:
+    config = SimConfig(floors=4, elevators=1, capacity=2)
+
+    plain = saturation_rate("small", "uniform", config)
+    named = saturation_rate("small", "uniform", config, algorithm="marginal_insertion")
+    other = saturation_rate("small", "uniform", config, algorithm="rush_express")
+
+    assert plain == named
+    # With one car there is no split to make, so the limit is the same.
+    assert other == plain
 
 
 def test_a_rate_is_accepted_when_heavy_passes_and_overload_fails() -> None:

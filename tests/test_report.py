@@ -25,8 +25,11 @@ def row(
         "passengers": 100,
         "total_mean": total_mean,
         "wait_mean": total_mean - 4,
+        "wait_min": 1,
         "wait_p95": 40,
         "wait_max": 90,
+        "total_min": 2,
+        "total_max": 95,
         "jain_wait": 0.5,
         "times_left_behind": 3,
     }
@@ -111,6 +114,23 @@ def test_m28_the_report_explains_the_fixed_load_only_when_it_ran() -> None:
 
     assert "the same arrivals" in render_report([row("eta", 2.0), fixed])
     assert "the same arrivals" not in render_report([row("eta", 2.0)])
+
+
+def test_gate_1_the_report_gives_the_minimum_and_maximum_the_assignment_asks_for() -> None:
+    report = render_report([row("eta", 10.0)])
+
+    assert "Min wait" in report
+    assert "Max wait" in report
+    assert "Min total" in report
+    assert "Max total" in report
+
+
+def test_m30_express_cases_are_listed_after_the_phase_1_cases() -> None:
+    express = {**row("eta", 1.0), "building": "3car-60floor-6cap-split30"}
+
+    report = render_report([express, row("eta", 2.0)])
+
+    assert report.index("## 3car-10floor-6cap,") < report.index("## 3car-60floor-6cap-split30,")
 
 
 def test_report_gives_the_mean_and_the_spread_across_seeds() -> None:

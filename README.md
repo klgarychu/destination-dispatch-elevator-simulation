@@ -40,11 +40,13 @@ Compare algorithms on one file, or run the whole suite:
 
 ```powershell
 python -m elevator_sim compare --requests data/one.csv --config configs/3car-10floor-6cap.toml --out results/one
-python -m elevator_sim compare --suite --stage all --workers 12 --out results/phase1
-python -m elevator_sim charts --stats results/phase1 --out results/phase1/charts
+python -m elevator_sim compare --suite --out results/phase2
+python -m elevator_sim charts --stats results/phase2 --out results/phase2/charts
 ```
 
-The suite has eight cases, each named after its building, such as `3car-60floor-6cap`. Every case runs four loads set from its own measured limit, which shows how it behaves near that limit. Every case also runs the same arrivals as `3car-60floor-6cap`, so a difference between cases comes from the building and not its traffic.
+`compare --suite` runs the express suite, on five express layouts of `3car-60floor-6cap` and one of `6car-60floor-6cap`, each on the same passengers as the building it changes. `compare --suite --phase 1` runs the first suite: eight cases named after their buildings, each at four loads set from its own measured limit, and each on the same arrivals as `3car-60floor-6cap`.
+
+To measure how much traffic a layout can carry under another algorithm, add `--algorithm` to `generate --calibrate`, with `--out` naming a separate file. The rates in `configs/load_rates.toml` are measured with `marginal_insertion`.
 
 Exit codes are 0 for success, 2 for invalid input or settings, and 3 for reaching `max_ticks`.
 
@@ -59,6 +61,9 @@ Every algorithm only chooses a car. All cars move by the same rule, LOOK: a car 
 | `zone_based` | The car that owns the request's block of floors |
 | `eta` | The lowest predicted wait for the new passenger only |
 | `marginal_insertion` | The lowest rise in total passenger time on the car, counting the delay to everyone else |
+| `rush_express` | As `marginal_insertion`, except that in a lobby rush one car serves every floor, one the low floors and one the high floors. A rush is when 70% of the last 30 requests came from the lobby |
+
+Stops take no time in this model, so an express car saves nothing by skipping a floor. Express cars, set with `[[express]]` tables in a config file, can only help by separating traffic.
 
 ## Tests
 
