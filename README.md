@@ -33,13 +33,13 @@ Simulated inputs:
 
 ```powershell
 python -m elevator_sim generate --suite --out data/generated
-python -m elevator_sim generate --pattern up_peak --rate 0.5 --ticks 1000 --seed 1 --config configs/baseline.toml --out data/one.csv
+python -m elevator_sim generate --pattern up_peak --rate 0.5 --ticks 1000 --seed 1 --config configs/3car-10floor-6cap.toml --out data/one.csv
 ```
 
 Compare algorithms on one file, or run the whole suite:
 
 ```powershell
-python -m elevator_sim compare --requests data/one.csv --config configs/baseline.toml --out results/one
+python -m elevator_sim compare --requests data/one.csv --config configs/3car-10floor-6cap.toml --out results/one
 python -m elevator_sim compare --suite --stage all --workers 12 --out results/phase1
 python -m elevator_sim charts --stats results/phase1 --out results/phase1/charts
 ```

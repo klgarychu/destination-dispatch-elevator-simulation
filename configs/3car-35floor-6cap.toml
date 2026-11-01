@@ -1,0 +1,6 @@
+# The middle height: against 10 and 60 floors, only height changes.
+[building]
+floors = 35
+elevators = 3
+capacity = 6
+start_floor = 1

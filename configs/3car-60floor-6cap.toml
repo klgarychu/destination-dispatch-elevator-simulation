@@ -1,0 +1,6 @@
+# The centre of the comparisons: floors, cars and capacity each change from here.
+[building]
+floors = 60
+elevators = 3
+capacity = 6
+start_floor = 1

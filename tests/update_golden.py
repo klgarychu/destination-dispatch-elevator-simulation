@@ -15,8 +15,8 @@ GOLDEN_DIR = Path(__file__).parent / "golden"
 
 # Short, busy inputs, so that seats run short and passengers get left behind.
 CASES = {
-    "baseline": (SimConfig(floors=10, elevators=3, capacity=6), 2.5),
-    "tall": (SimConfig(floors=60, elevators=6, capacity=10), 1.5),
+    "3car-10floor-6cap": (SimConfig(floors=10, elevators=3, capacity=6), 2.5),
+    "6car-60floor-6cap": (SimConfig(floors=60, elevators=6, capacity=6), 1.5),
 }
 
 

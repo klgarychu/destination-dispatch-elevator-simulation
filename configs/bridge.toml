@@ -1,6 +1,0 @@
-# Between baseline and tall: the baseline building with the floors of tall, so only height changes.
-[building]
-floors = 60
-elevators = 3
-capacity = 6
-start_floor = 1

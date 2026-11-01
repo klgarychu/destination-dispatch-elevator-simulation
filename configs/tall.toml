@@ -1,6 +1,0 @@
-# A tall building that includes the PDF's floor 51.
-[building]
-floors = 60
-elevators = 6
-capacity = 10
-start_floor = 1

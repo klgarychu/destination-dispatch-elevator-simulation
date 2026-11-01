@@ -1,0 +1,6 @@
+# The cars of 3car-60floor-6cap, with twice the seats per car.
+[building]
+floors = 60
+elevators = 3
+capacity = 12
+start_floor = 1

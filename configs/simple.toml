@@ -1,6 +1,0 @@
-# The simplest case: the baseline building with one car, so no algorithm has a car to choose.
-[building]
-floors = 10
-elevators = 1
-capacity = 6
-start_floor = 1

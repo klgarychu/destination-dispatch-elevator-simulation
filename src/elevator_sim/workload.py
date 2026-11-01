@@ -20,7 +20,22 @@ from elevator_sim.requests import CSV_HEADER, Request, load_requests
 CONFIG_DIR = Path("configs")
 RATES_FILE = CONFIG_DIR / "load_rates.toml"
 
-BUILDINGS = ("simple", "baseline", "bridge", "tall")
+BUILDINGS = (
+    "1car-10floor-6cap",
+    "3car-10floor-6cap",
+    "3car-35floor-6cap",
+    "3car-60floor-6cap",
+    "6car-60floor-6cap",
+    "9car-60floor-6cap",
+    "3car-60floor-9cap",
+    "3car-60floor-12cap",
+)
+# Seeds keep the name each case first had, so renaming a case changes no request (M27).
+_FIRST_NAMES = {
+    "1car-10floor-6cap": "simple",
+    "3car-10floor-6cap": "baseline",
+    "3car-60floor-6cap": "bridge",
+}
 # Incoming, outgoing and interfloor percentages. None draws both floors from the whole building.
 PATTERNS: dict[str, tuple[int, int, int] | None] = {
     "uniform": None,
@@ -56,7 +71,8 @@ def input_name(building: str, pattern: str, load: str, seed: int) -> str:
 
 def input_seed(building: str, pattern: str, load: str, seed: int) -> int:
     """A seed per file, so inputs are independent and repeatable."""
-    return zlib.crc32(f"{building}|{pattern}|{load}|{seed}".encode())
+    first_name = _FIRST_NAMES.get(building, building)
+    return zlib.crc32(f"{first_name}|{pattern}|{load}|{seed}".encode())
 
 
 def suite_inputs(seeds: Sequence[int] = SEEDS) -> Iterator[InputSpec]:

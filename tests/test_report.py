@@ -16,7 +16,7 @@ def row(
         "config_id": config_id(SimConfig(algorithm=algorithm)),
         "algorithm": algorithm,
         "behaviour": "min_time",
-        "building": "baseline",
+        "building": "3car-10floor-6cap",
         "pattern": "lunch",
         "load": "heavy",
         "seed": seed,
@@ -92,8 +92,8 @@ def test_report_has_one_section_per_building_pattern_and_load() -> None:
 
     report = render_report([row("eta", 2.0), other])
 
-    assert "## baseline, lunch, heavy" in report
-    assert "## baseline, lunch, light" in report
+    assert "## 3car-10floor-6cap, lunch, heavy" in report
+    assert "## 3car-10floor-6cap, lunch, light" in report
 
 
 def test_report_gives_the_mean_and_the_spread_across_seeds() -> None:

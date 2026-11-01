@@ -108,7 +108,7 @@ def a_record(run_id: str = "run", sample_dir: str | None = None) -> RunRecord:
         fingerprint="abc",
         config_id="eta__min_time__none__none",
         stage=1,
-        building="baseline",
+        building="3car-10floor-6cap",
         pattern="lunch",
         load="heavy",
         seed=1,

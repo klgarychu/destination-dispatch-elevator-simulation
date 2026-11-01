@@ -1,25 +1,49 @@
 # Measured saturation arrival rates, in passengers per tick (spec section 12.4, M6).
 
-[baseline]
-uniform = 3.79
-up_peak = 1.62
-down_peak = 1.97
-lunch = 2.83
-
-[bridge]
-uniform = 0.68
-up_peak = 0.29
-down_peak = 0.35
-lunch = 0.56
-
-[simple]
+[1car-10floor-6cap]
 uniform = 1.25
 up_peak = 0.46
 down_peak = 0.44
 lunch = 0.9
 
-[tall]
-uniform = 2.42
-up_peak = 1.02
-down_peak = 1.21
-lunch = 1.62
+[3car-10floor-6cap]
+uniform = 3.79
+up_peak = 1.62
+down_peak = 1.97
+lunch = 2.83
+
+[3car-35floor-6cap]
+uniform = 1.16
+up_peak = 0.47
+down_peak = 0.56
+lunch = 0.85
+
+[3car-60floor-12cap]
+uniform = 1.32
+up_peak = 0.54
+down_peak = 0.65
+lunch = 1.03
+
+[3car-60floor-6cap]
+uniform = 0.68
+up_peak = 0.29
+down_peak = 0.35
+lunch = 0.56
+
+[3car-60floor-9cap]
+uniform = 0.98
+up_peak = 0.47
+down_peak = 0.49
+lunch = 0.73
+
+[6car-60floor-6cap]
+uniform = 1.42
+up_peak = 0.65
+down_peak = 0.72
+lunch = 1.07
+
+[9car-60floor-6cap]
+uniform = 2.12
+up_peak = 1.0
+down_peak = 1.1
+lunch = 1.64

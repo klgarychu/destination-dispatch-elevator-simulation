@@ -8,6 +8,7 @@ import pytest
 from elevator_sim.config import ConfigError
 from elevator_sim.requests import Request, load_requests
 from elevator_sim.workload import (
+    BUILDINGS,
     InputSpec,
     building_config,
     ensure_inputs,
@@ -87,24 +88,39 @@ def test_tst15_passenger_ids_are_numbered_from_one() -> None:
 
 
 def test_tst15_input_seed_is_a_crc32_of_all_four_parts() -> None:
-    # zlib.crc32(b"baseline|up_peak|heavy|1"), worked out separately from the code under test.
-    assert input_seed("baseline", "up_peak", "heavy", 1) == 647343489
+    # zlib.crc32(b"3car-35floor-6cap|up_peak|heavy|1"), worked out separately from the code.
+    assert input_seed("3car-35floor-6cap", "up_peak", "heavy", 1) == 3105559437
+
+
+@pytest.mark.parametrize(
+    ("case", "expected"),
+    [
+        # zlib.crc32 of b"simple|up_peak|heavy|1", b"baseline|..." and b"bridge|...".
+        ("1car-10floor-6cap", 715725346),
+        ("3car-10floor-6cap", 647343489),
+        ("3car-60floor-6cap", 3362652933),
+    ],
+)
+def test_m27_a_renamed_case_keeps_the_seed_of_its_first_name(case: str, expected: int) -> None:
+    assert input_seed(case, "up_peak", "heavy", 1) == expected
 
 
 def test_tst15_each_part_of_the_name_changes_the_seed() -> None:
     seeds = {
-        input_seed("baseline", "up_peak", "heavy", 1),
-        input_seed("tall", "up_peak", "heavy", 1),
-        input_seed("baseline", "lunch", "heavy", 1),
-        input_seed("baseline", "up_peak", "light", 1),
-        input_seed("baseline", "up_peak", "heavy", 2),
+        input_seed("3car-10floor-6cap", "up_peak", "heavy", 1),
+        input_seed("6car-60floor-6cap", "up_peak", "heavy", 1),
+        input_seed("3car-10floor-6cap", "lunch", "heavy", 1),
+        input_seed("3car-10floor-6cap", "up_peak", "light", 1),
+        input_seed("3car-10floor-6cap", "up_peak", "heavy", 2),
     }
 
     assert len(seeds) == 5
 
 
 def test_tst15_input_files_follow_the_naming_rule() -> None:
-    assert input_name("tall", "down_peak", "overload", 3) == "tall_down_peak_overload_s3.csv"
+    name = input_name("6car-60floor-6cap", "down_peak", "overload", 3)
+
+    assert name == "6car-60floor-6cap_down_peak_overload_s3.csv"
 
 
 def test_tst15_a_written_file_loads_back_the_same(tmp_path: Path) -> None:
@@ -124,7 +140,7 @@ def test_ensure_inputs_writes_missing_files_and_accepts_ones_that_match_the_rate
 
     ensure_inputs(tmp_path, (1,))
 
-    assert len(written) == 64
+    assert len(written) == 128
     assert {path.name: path.read_bytes() for path in tmp_path.iterdir()} == written
 
 
@@ -221,26 +237,51 @@ def test_a_rates_file_that_is_not_utf_8_is_refused(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize(
     "rates",
-    [{}, {"baseline": 3}, {"baseline": {}}, {"baseline": {"lunch": "fast"}}],
+    [
+        {},
+        {"3car-10floor-6cap": 3},
+        {"3car-10floor-6cap": {}},
+        {"3car-10floor-6cap": {"lunch": "fast"}},
+    ],
 )
 def test_a_missing_or_unusable_rate_is_refused(rates: dict[str, dict[str, float]]) -> None:
-    with pytest.raises(ConfigError, match="baseline lunch"):
-        input_requests(InputSpec("baseline", "lunch", "light", 1), rates)
+    with pytest.raises(ConfigError, match="3car-10floor-6cap lunch"):
+        input_requests(InputSpec("3car-10floor-6cap", "lunch", "light", 1), rates)
 
 
-def test_simple_is_one_car_in_the_baseline_building() -> None:
-    simple, baseline = building_config("simple"), building_config("baseline")
+def test_m27_the_cases_are_listed_in_their_fixed_order() -> None:
+    assert BUILDINGS == (
+        "1car-10floor-6cap",
+        "3car-10floor-6cap",
+        "3car-35floor-6cap",
+        "3car-60floor-6cap",
+        "6car-60floor-6cap",
+        "9car-60floor-6cap",
+        "3car-60floor-9cap",
+        "3car-60floor-12cap",
+    )
 
-    assert (simple.floors, simple.elevators) == (baseline.floors, 1)
-    assert (simple.capacity, simple.start_floor) == (baseline.capacity, baseline.start_floor)
 
+@pytest.mark.parametrize(
+    ("case", "floors", "elevators", "capacity"),
+    [
+        ("1car-10floor-6cap", 10, 1, 6),
+        ("3car-10floor-6cap", 10, 3, 6),
+        ("3car-35floor-6cap", 35, 3, 6),
+        ("3car-60floor-6cap", 60, 3, 6),
+        ("6car-60floor-6cap", 60, 6, 6),
+        ("9car-60floor-6cap", 60, 9, 6),
+        ("3car-60floor-9cap", 60, 3, 9),
+        ("3car-60floor-12cap", 60, 3, 12),
+    ],
+)
+def test_m27_each_case_has_the_building_its_name_states(
+    case: str, floors: int, elevators: int, capacity: int
+) -> None:
+    config = building_config(case)
 
-def test_bridge_is_the_baseline_building_with_the_floors_of_tall() -> None:
-    bridge, baseline, tall = (building_config(name) for name in ("bridge", "baseline", "tall"))
-
-    assert bridge.floors == tall.floors
-    assert (bridge.elevators, bridge.capacity) == (baseline.elevators, baseline.capacity)
-    assert bridge.start_floor == baseline.start_floor
+    assert (config.floors, config.elevators, config.capacity) == (floors, elevators, capacity)
+    assert config.start_floor == 1
 
 
 def test_every_suite_building_has_a_rate_for_every_pattern() -> None:

@@ -173,7 +173,7 @@ def test_tst17_generate_writes_one_custom_file(tmp_path: Path) -> None:
             "--seed",
             "1",
             "--config",
-            str(ROOT / "configs" / "baseline.toml"),
+            str(ROOT / "configs" / "3car-10floor-6cap.toml"),
             "--out",
             str(out),
         ]
@@ -192,7 +192,7 @@ def test_tst17_generate_needs_a_pattern_and_rate(capsys: pytest.CaptureFixture[s
 
 
 def test_tst17_generated_file_runs_through_every_step(tmp_path: Path) -> None:
-    baseline = str(ROOT / "configs" / "baseline.toml")
+    baseline = str(ROOT / "configs" / "3car-10floor-6cap.toml")
     file = tmp_path / "one.csv"
 
     main(

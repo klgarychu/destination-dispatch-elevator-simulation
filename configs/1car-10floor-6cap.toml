@@ -1,0 +1,6 @@
+# One car on 10 floors, so no algorithm has a car to choose.
+[building]
+floors = 10
+elevators = 1
+capacity = 6
+start_floor = 1
