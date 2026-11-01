@@ -430,9 +430,9 @@ def test_compare_suite_stops_on_an_input_that_no_longer_matches_the_rates(
 def test_tst17_a_suite_matrix_has_every_configuration_on_every_input() -> None:
     tasks = suite_tasks(Path("data/generated"))
 
-    assert len(tasks) == 800
-    assert len({task.run_id for task in tasks}) == 800
-    assert {task.building for task in tasks} == {"baseline", "tall"}
+    assert len(tasks) == 1200
+    assert len({task.run_id for task in tasks}) == 1200
+    assert {task.building for task in tasks} == {"simple", "baseline", "tall"}
     assert {task.pattern for task in tasks} == {"uniform", "up_peak", "down_peak", "lunch"}
     assert {task.load for task in tasks} == {"light", "medium", "heavy", "overload"}
     assert {task.config.algorithm for task in tasks} == set(ALGORITHMS)
@@ -444,7 +444,9 @@ def test_tst17_buildings_are_applied_to_their_own_inputs() -> None:
 
     tall = next(task for task in tasks if task.building == "tall")
     baseline = next(task for task in tasks if task.building == "baseline")
+    simple = next(task for task in tasks if task.building == "simple")
 
+    assert (simple.config.floors, simple.config.elevators, simple.config.capacity) == (10, 1, 6)
     assert (tall.config.floors, tall.config.elevators, tall.config.capacity) == (60, 6, 10)
     assert (baseline.config.floors, baseline.config.elevators, baseline.config.capacity) == (
         10,
@@ -456,19 +458,21 @@ def test_tst17_buildings_are_applied_to_their_own_inputs() -> None:
 def test_tst17_quick_suite_uses_seed_1_only() -> None:
     tasks = suite_tasks(Path("data/generated"), quick=True)
 
-    assert len(tasks) == 160
+    assert len(tasks) == 240
     assert {task.seed for task in tasks} == {1}
 
 
 def test_sample_runs_are_two_inputs_per_building_for_every_configuration() -> None:
     assert sample_inputs() == {
+        ("simple", "up_peak", "heavy", 1),
+        ("simple", "lunch", "overload", 1),
         ("baseline", "up_peak", "heavy", 1),
         ("baseline", "lunch", "overload", 1),
         ("tall", "up_peak", "heavy", 1),
         ("tall", "lunch", "overload", 1),
     }
     samples = [task for task in suite_tasks(Path("data/generated")) if task.sample]
-    assert len(samples) == 20
+    assert len(samples) == 30
 
 
 def test_sample_runs_keep_their_full_logs(tmp_path: Path) -> None:

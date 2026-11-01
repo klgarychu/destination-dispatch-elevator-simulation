@@ -1,5 +1,7 @@
 """TST-11: each algorithm chooses the expected car. Scores and costs are worked by hand."""
 
+from dataclasses import replace
+
 import pytest
 
 from elevator_sim.boarding.behaviours import make_behaviour
@@ -7,6 +9,7 @@ from elevator_sim.config import ALGORITHMS, SimConfig
 from elevator_sim.elevators.normal import NormalElevator
 from elevator_sim.engine import simulate
 from elevator_sim.forecast import PredictedTrip
+from elevator_sim.metrics import wait_time
 from elevator_sim.requests import Direction, Request
 from elevator_sim.schedulers.eta import Eta
 from elevator_sim.schedulers.marginal_insertion import MarginalInsertion, marginal_cost
@@ -113,6 +116,46 @@ def test_tst11_zone_based_ignores_where_the_cars_are() -> None:
     view = view_of(car_at(1, 8), car_at(2, 1), car_at(3, 8))
 
     assert ZoneBased().assign(request(7, 2), view) == 2
+
+
+ONE_CAR = SimConfig(floors=10, elevators=1, capacity=6)
+ONE_CAR_REQUESTS = [
+    Request(0, "a", 1, 8),
+    Request(0, "b", 1, 3),
+    Request(2, "c", 9, 2),
+    Request(2, "d", 4, 7),
+    Request(5, "e", 6, 1),
+    Request(40, "f", 3, 5),
+]
+
+
+@pytest.mark.parametrize("algorithm", ["nearest_car", "eta", "marginal_insertion"])
+def test_tst11_one_car_leaves_the_algorithm_nothing_to_choose(algorithm: str) -> None:
+    reference = simulate(ONE_CAR_REQUESTS, replace(ONE_CAR, algorithm="round_robin"))
+
+    result = simulate(ONE_CAR_REQUESTS, replace(ONE_CAR, algorithm=algorithm))
+
+    assert result.positions == reference.positions
+    assert result.passengers == reference.passengers
+
+
+@pytest.mark.parametrize(
+    ("algorithm", "second_wait"),
+    [
+        # The car stops at floor 3 by tick 2, so at tick 6 it is 5 floors from floor 8.
+        ("round_robin", 5),
+        # It carries on to floor 5, the middle of its zone, by tick 4: 3 floors from floor 8.
+        ("zone_based", 3),
+    ],
+)
+def test_tst11_with_one_car_zone_based_differs_only_by_parking(
+    algorithm: str, second_wait: int
+) -> None:
+    requests = [Request(0, "a", 1, 3), Request(6, "b", 8, 10)]
+
+    result = simulate(requests, replace(ONE_CAR, algorithm=algorithm))
+
+    assert [wait_time(p) for p in result.passengers] == [0, second_wait]
 
 
 def test_tst11_zone_based_parks_idle_cars_mid_zone_rounded_down() -> None:

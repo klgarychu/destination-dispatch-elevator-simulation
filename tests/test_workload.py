@@ -9,6 +9,7 @@ from elevator_sim.config import ConfigError
 from elevator_sim.requests import Request, load_requests
 from elevator_sim.workload import (
     InputSpec,
+    building_config,
     ensure_inputs,
     generate_requests,
     input_name,
@@ -123,7 +124,7 @@ def test_ensure_inputs_writes_missing_files_and_accepts_ones_that_match_the_rate
 
     ensure_inputs(tmp_path, (1,))
 
-    assert len(written) == 32
+    assert len(written) == 48
     assert {path.name: path.read_bytes() for path in tmp_path.iterdir()} == written
 
 
@@ -225,3 +226,17 @@ def test_a_rates_file_that_is_not_utf_8_is_refused(tmp_path: Path) -> None:
 def test_a_missing_or_unusable_rate_is_refused(rates: dict[str, dict[str, float]]) -> None:
     with pytest.raises(ConfigError, match="baseline lunch"):
         input_requests(InputSpec("baseline", "lunch", "light", 1), rates)
+
+
+def test_simple_is_one_car_in_the_baseline_building() -> None:
+    simple, baseline = building_config("simple"), building_config("baseline")
+
+    assert (simple.floors, simple.elevators) == (baseline.floors, 1)
+    assert (simple.capacity, simple.start_floor) == (baseline.capacity, baseline.start_floor)
+
+
+def test_every_suite_building_has_a_rate_for_every_pattern() -> None:
+    rates = load_rates()
+
+    for spec in suite_inputs():
+        assert rates[spec.building][spec.pattern] > 0

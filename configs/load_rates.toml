@@ -6,6 +6,12 @@ up_peak = 1.62
 down_peak = 1.97
 lunch = 2.83
 
+[simple]
+uniform = 1.25
+up_peak = 0.46
+down_peak = 0.44
+lunch = 0.9
+
 [tall]
 uniform = 2.42
 up_peak = 1.02
