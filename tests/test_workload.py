@@ -124,7 +124,7 @@ def test_ensure_inputs_writes_missing_files_and_accepts_ones_that_match_the_rate
 
     ensure_inputs(tmp_path, (1,))
 
-    assert len(written) == 48
+    assert len(written) == 64
     assert {path.name: path.read_bytes() for path in tmp_path.iterdir()} == written
 
 
@@ -233,6 +233,14 @@ def test_simple_is_one_car_in_the_baseline_building() -> None:
 
     assert (simple.floors, simple.elevators) == (baseline.floors, 1)
     assert (simple.capacity, simple.start_floor) == (baseline.capacity, baseline.start_floor)
+
+
+def test_bridge_is_the_baseline_building_with_the_floors_of_tall() -> None:
+    bridge, baseline, tall = (building_config(name) for name in ("bridge", "baseline", "tall"))
+
+    assert bridge.floors == tall.floors
+    assert (bridge.elevators, bridge.capacity) == (baseline.elevators, baseline.capacity)
+    assert bridge.start_floor == baseline.start_floor
 
 
 def test_every_suite_building_has_a_rate_for_every_pattern() -> None:

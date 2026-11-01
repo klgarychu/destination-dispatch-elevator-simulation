@@ -20,7 +20,7 @@ from elevator_sim.requests import CSV_HEADER, Request, load_requests
 CONFIG_DIR = Path("configs")
 RATES_FILE = CONFIG_DIR / "load_rates.toml"
 
-BUILDINGS = ("simple", "baseline", "tall")
+BUILDINGS = ("simple", "baseline", "bridge", "tall")
 # Incoming, outgoing and interfloor percentages. None draws both floors from the whole building.
 PATTERNS: dict[str, tuple[int, int, int] | None] = {
     "uniform": None,
