@@ -62,6 +62,7 @@ def test_tst16_stats_columns_are_the_ones_in_the_spec() -> None:
         "building",
         "pattern",
         "load",
+        "load_basis",
         "seed",
         "algorithm",
         "behaviour",
@@ -137,6 +138,7 @@ def test_tst16_aggregate_gives_mean_min_and_max_across_seeds() -> None:
             "building": "b",
             "pattern": "p",
             "load": "l",
+            "load_basis": "own_limit",
             "seed": 1,
             "total_mean": 10.0,
             "wait_max": 4,
@@ -148,6 +150,7 @@ def test_tst16_aggregate_gives_mean_min_and_max_across_seeds() -> None:
             "building": "b",
             "pattern": "p",
             "load": "l",
+            "load_basis": "own_limit",
             "seed": 2,
             "total_mean": 20.0,
             "wait_max": 8,
@@ -159,6 +162,7 @@ def test_tst16_aggregate_gives_mean_min_and_max_across_seeds() -> None:
             "building": "b",
             "pattern": "p",
             "load": "other",
+            "load_basis": "own_limit",
             "seed": 1,
             "total_mean": 99.0,
             "wait_max": 1,
@@ -430,8 +434,8 @@ def test_compare_suite_stops_on_an_input_that_no_longer_matches_the_rates(
 def test_tst17_a_suite_matrix_has_every_configuration_on_every_input() -> None:
     tasks = suite_tasks(Path("data/generated"))
 
-    assert len(tasks) == 3200
-    assert len({task.run_id for task in tasks}) == 3200
+    assert len(tasks) == 6000
+    assert len({task.run_id for task in tasks}) == 6000
     assert {task.building for task in tasks} == set(BUILDINGS)
     assert {task.pattern for task in tasks} == {"uniform", "up_peak", "down_peak", "lunch"}
     assert {task.load for task in tasks} == {"light", "medium", "heavy", "overload"}
@@ -444,13 +448,70 @@ def test_tst17_buildings_are_applied_to_their_own_inputs() -> None:
         assert task.config == replace(
             building_config(task.building), algorithm=task.config.algorithm
         )
-        assert task.input_path.name.startswith(f"{task.building}_")
+        if task.load_basis == "own_limit":
+            assert task.input_path.name.startswith(f"{task.building}_")
+
+
+def test_m28_the_fixed_load_gives_every_other_case_the_same_arrivals() -> None:
+    tasks = [t for t in suite_tasks(Path("data/generated")) if t.load_basis == "fixed"]
+
+    assert len(tasks) == 2800
+    assert not any(task.sample for task in tasks)
+    assert {
+        task.building: task.input_path.name
+        for task in tasks
+        if (task.pattern, task.load, task.seed, task.config.algorithm)
+        == ("lunch", "heavy", 2, "eta")
+    } == {
+        "1car-10floor-6cap": "fixed-10floor_lunch_heavy_s2.csv",
+        "3car-10floor-6cap": "fixed-10floor_lunch_heavy_s2.csv",
+        "3car-35floor-6cap": "fixed-35floor_lunch_heavy_s2.csv",
+        "6car-60floor-6cap": "3car-60floor-6cap_lunch_heavy_s2.csv",
+        "9car-60floor-6cap": "3car-60floor-6cap_lunch_heavy_s2.csv",
+        "3car-60floor-9cap": "3car-60floor-6cap_lunch_heavy_s2.csv",
+        "3car-60floor-12cap": "3car-60floor-6cap_lunch_heavy_s2.csv",
+    }
+
+
+def test_m28_a_fixed_load_run_keeps_the_logs_of_the_run_that_shares_its_file(
+    tmp_path: Path,
+) -> None:
+    file = tmp_path / "input.csv"
+    file.write_text(SIX_ROWS, encoding="utf-8")
+    config = SimConfig(algorithm="eta")
+    own = Task("own", config, 1, "a", "p", "l", 1, file, sample=True)
+    fixed = Task("fixed", config, 1, "b", "p", "l", 1, file, load_basis="fixed")
+    run_tasks([own], tmp_path, workers=1)
+
+    run_tasks([own, fixed], tmp_path, workers=1)
+
+    assert (tmp_path / "samples" / "input" / "eta__min_time__none__none").exists()
+
+
+def test_m28_the_statistics_keep_the_two_load_bases_apart(tmp_path: Path) -> None:
+    file = tmp_path / "input.csv"
+    file.write_text(SIX_ROWS, encoding="utf-8")
+    config = SimConfig(algorithm="eta")
+    own = Task("own", config, 1, "a", "p", "l", 1, file)
+    fixed = Task("fixed", config, 1, "a", "p", "l", 1, file, load_basis="fixed")
+    out = tmp_path / "out"
+
+    run_suite([own, fixed], out, workers=1)
+
+    assert [row["load_basis"] for row in read_rows(out / "simulation_stats.csv")] == [
+        "own_limit",
+        "fixed",
+    ]
+    assert [row["load_basis"] for row in read_rows(out / "aggregate_stats.csv")] == [
+        "own_limit",
+        "fixed",
+    ]
 
 
 def test_tst17_quick_suite_uses_seed_1_only() -> None:
     tasks = suite_tasks(Path("data/generated"), quick=True)
 
-    assert len(tasks) == 640
+    assert len(tasks) == 1200
     assert {task.seed for task in tasks} == {1}
 
 

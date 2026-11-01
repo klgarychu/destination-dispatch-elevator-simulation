@@ -1,5 +1,7 @@
 """Static PNG charts from saved statistics. Fixed order, and nothing is ranked or highlighted.
 
+Charts show each case against its own limit, so the fixed-load runs are left out of them.
+
 The colours pass a colour-blindness check with every pair in play, as scatter charts need. Two of
 them have low contrast against the background, so report.md is the table view of every chart.
 """
@@ -22,7 +24,7 @@ from matplotlib.ticker import FixedLocator, FuncFormatter, LogLocator, NullLocat
 from elevator_sim.config import ALGORITHMS, ConfigError
 from elevator_sim.metrics import nearest_rank
 from elevator_sim.output import RunRecord, read_manifest, read_run_record
-from elevator_sim.workload import LOADS, PATTERNS, input_name
+from elevator_sim.workload import FIXED, LOADS, PATTERNS, input_name
 
 COLOURS = {
     "round_robin": "#2a78d6",
@@ -235,7 +237,7 @@ def pooled_times(
     pooled: dict[tuple[str, str], dict[str, list[int]]] = {}
     for run_id in run_ids:
         record = _saved_run(stats, run_id)
-        if record.building != building:
+        if record.building != building or record.load_basis == FIXED:
             continue
         key = (record.load, record.settings["algorithm"])
         times = pooled.setdefault(key, {"wait": [], "total": []})
@@ -455,7 +457,7 @@ def write_charts(stats: Path, out: Path) -> list[Path]:
     An incomplete comparison is refused, not drawn with gaps. Stalled runs tend to be the hardest
     ones, so a partial chart would flatter the algorithm that stalled.
     """
-    rows = _read_aggregates(stats)
+    rows = [row for row in _read_aggregates(stats) if row["load_basis"] != FIXED]
     manifest = read_manifest(stats)
     if manifest.not_finished:
         count = len(manifest.not_finished)

@@ -111,6 +111,7 @@ def a_record(run_id: str = "run", sample_dir: str | None = None) -> RunRecord:
         building="3car-10floor-6cap",
         pattern="lunch",
         load="heavy",
+        load_basis="own_limit",
         seed=1,
         settings={"algorithm": "eta"},
         stats={"passengers": 2},

@@ -6,7 +6,7 @@ import random
 import tomllib
 import zlib
 from collections.abc import Iterator, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from elevator_sim.config import (
@@ -44,6 +44,12 @@ PATTERNS: dict[str, tuple[int, int, int] | None] = {
     "lunch": (40, 40, 20),
 }
 LOADS = {"light": 0.3, "medium": 0.6, "heavy": 0.9, "overload": 1.2}
+# Own limit sets each case's load from its own saturation rate. Fixed gives every case the same
+# arrivals, so that a difference between cases comes from the case and not its traffic (M28).
+OWN_LIMIT = "own_limit"
+FIXED = "fixed"
+# The case that sets the fixed load. It has the lowest limits, so every case can carry that load.
+FIXED_LOAD_CASE = "3car-60floor-6cap"
 SEEDS = (1, 2, 3, 4, 5)
 ARRIVAL_TICKS = 1000
 # The most requests the generator will expect to make. The PDF sets no limit, but a high enough
@@ -59,10 +65,20 @@ class InputSpec:
     pattern: str
     load: str
     seed: int
+    fixed: bool = False
 
     @property
     def name(self) -> str:
-        return input_name(self.building, self.pattern, self.load, self.seed)
+        source = _fixed_load_source(self.building) if self.fixed else self.building
+        return input_name(source, self.pattern, self.load, self.seed)
+
+
+def _fixed_load_source(building: str) -> str:
+    """What a case's fixed-load file is named after. Cases of one height share a file."""
+    floors = building_config(building).floors
+    if floors == building_config(FIXED_LOAD_CASE).floors:
+        return FIXED_LOAD_CASE
+    return f"fixed-{floors}floor"
 
 
 def input_name(building: str, pattern: str, load: str, seed: int) -> str:
@@ -81,6 +97,19 @@ def suite_inputs(seeds: Sequence[int] = SEEDS) -> Iterator[InputSpec]:
             for load in LOADS:
                 for seed in seeds:
                     yield InputSpec(building, pattern, load, seed)
+
+
+def fixed_inputs(seeds: Sequence[int] = SEEDS) -> Iterator[InputSpec]:
+    """The fixed load on every other case, because that case's own runs already are that load."""
+    for spec in suite_inputs(seeds):
+        if spec.building != FIXED_LOAD_CASE:
+            yield replace(spec, fixed=True)
+
+
+def _input_files(seeds: Sequence[int]) -> dict[str, InputSpec]:
+    """One spec per file, because cases can share a fixed-load file."""
+    specs = [*suite_inputs(seeds), *fixed_inputs(seeds)]
+    return {spec.name: spec for spec in specs}
 
 
 def _trip(rng: random.Random, mix: tuple[int, int, int] | None, floors: int) -> tuple[int, int]:
@@ -160,7 +189,21 @@ def _rate_for(spec: InputSpec, rates: dict[str, dict[str, float]]) -> float:
     return rate
 
 
+def _fixed_requests(spec: InputSpec, rates: dict[str, dict[str, float]]) -> list[Request]:
+    """The fixed-load case's arrivals, with their floors redrawn if this case's height differs."""
+    arrivals = input_requests(replace(spec, building=FIXED_LOAD_CASE, fixed=False), rates)
+    floors = building_config(spec.building).floors
+    if floors == building_config(FIXED_LOAD_CASE).floors:
+        return arrivals
+    source = _fixed_load_source(spec.building)
+    rng = random.Random(input_seed(source, spec.pattern, spec.load, spec.seed))
+    mix = PATTERNS[spec.pattern]
+    return [Request(r.time, r.id, *_trip(rng, mix, floors)) for r in arrivals]
+
+
 def input_requests(spec: InputSpec, rates: dict[str, dict[str, float]]) -> list[Request]:
+    if spec.fixed:
+        return _fixed_requests(spec, rates)
     config = building_config(spec.building)
     rate = _rate_for(spec, rates) * LOADS[spec.load]
     seed = input_seed(spec.building, spec.pattern, spec.load, spec.seed)
@@ -169,18 +212,17 @@ def input_requests(spec: InputSpec, rates: dict[str, dict[str, float]]) -> list[
 
 def write_suite(out: Path, seeds: Sequence[int] = SEEDS) -> int:
     rates = load_rates()
-    count = 0
-    for spec in suite_inputs(seeds):
-        write_requests(out / spec.name, input_requests(spec, rates))
-        count += 1
-    return count
+    files = _input_files(seeds)
+    for name, spec in files.items():
+        write_requests(out / name, input_requests(spec, rates))
+    return len(files)
 
 
 def ensure_inputs(out: Path, seeds: Sequence[int] = SEEDS) -> None:
     """Write any missing suite inputs, and stop at one that no longer matches the rates."""
     rates = load_rates()
-    for spec in suite_inputs(seeds):
-        path = out / spec.name
+    for name, spec in _input_files(seeds).items():
+        path = out / name
         requests = input_requests(spec, rates)
         if not path.exists():
             write_requests(path, requests)

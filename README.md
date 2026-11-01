@@ -44,6 +44,8 @@ python -m elevator_sim compare --suite --stage all --workers 12 --out results/ph
 python -m elevator_sim charts --stats results/phase1 --out results/phase1/charts
 ```
 
+The suite has eight cases, each named after its building, such as `3car-60floor-6cap`. Every case runs four loads set from its own measured limit, which shows how it behaves near that limit. Every case also runs the same arrivals as `3car-60floor-6cap`, so a difference between cases comes from the building and not its traffic.
+
 Exit codes are 0 for success, 2 for invalid input or settings, and 3 for reaching `max_ticks`.
 
 ## Algorithms

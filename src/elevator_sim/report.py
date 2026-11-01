@@ -5,7 +5,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from elevator_sim.config import ALGORITHMS
-from elevator_sim.workload import BUILDINGS, LOADS, PATTERNS
+from elevator_sim.workload import BUILDINGS, FIXED, FIXED_LOAD_CASE, LOADS, OWN_LIMIT, PATTERNS
 
 _COLUMNS = (
     ("Mean total", "total_mean"),
@@ -22,9 +22,10 @@ def _place(options: Sequence[str], value: str) -> int:
     return options.index(value) if value in options else len(options)
 
 
-def _group_key(row: dict[str, Any]) -> tuple[int, str, int, str, int, str]:
+def _group_key(row: dict[str, Any]) -> tuple[int, int, str, int, str, int, str]:
     building, pattern, load = row["building"], row["pattern"], row["load"]
     return (
+        _place((OWN_LIMIT, FIXED), row["load_basis"]),
         _place(BUILDINGS, building),
         building,
         _place(list(PATTERNS), pattern),
@@ -78,14 +79,14 @@ def _incomplete_notice(finished: int, not_finished: Sequence[str]) -> list[str]:
 
 
 def render_report(rows: Sequence[dict[str, Any]], not_finished: Sequence[str] = ()) -> str:
-    inputs = {(r["building"], r["pattern"], r["load"], r["seed"]) for r in rows}
+    pairs = {(r["load_basis"], r["building"], r["pattern"], r["load"], r["seed"]) for r in rows}
     seeds = sorted({r["seed"] for r in rows})
     unguarded = sum(1 for r in rows if r["unguarded"])
     lines = [
         "# Simulation report",
         "",
         *_incomplete_notice(len(rows), not_finished),
-        f"Runs: {len(rows)}. Inputs: {len(inputs)}. "
+        f"Runs: {len(rows)}. Case and input pairs: {len(pairs)}. "
         f"Configurations: {len({r['config_id'] for r in rows})}. "
         f"Seeds: {', '.join(str(seed) for seed in seeds)}.",
         "",
@@ -101,15 +102,23 @@ def render_report(rows: Sequence[dict[str, Any]], not_finished: Sequence[str] = 
         "Total time is wait time plus a fixed distance, so differences in mean total time are "
         "exactly the differences in mean wait time.",
     ]
-    groups: dict[tuple[int, str, int, str, int, str], list[dict[str, Any]]] = {}
+    if any(r["load_basis"] == FIXED for r in rows):
+        lines += [
+            "",
+            f"Sections marked fixed load give each case the same arrivals as {FIXED_LOAD_CASE}, "
+            "whose own sections are that load. Cases of another height keep the arrival ticks, "
+            "with floors drawn for their height.",
+        ]
+    groups: dict[tuple[int, int, str, int, str, int, str], list[dict[str, Any]]] = {}
     for row in rows:
         groups.setdefault(_group_key(row), []).append(row)
     for key in sorted(groups):
         members = groups[key]
         first = members[0]
+        label = ", fixed load" if first["load_basis"] == FIXED else ""
         lines += [
             "",
-            f"## {first['building']}, {first['pattern']}, {first['load']}",
+            f"## {first['building']}, {first['pattern']}, {first['load']}{label}",
             "",
             *_table(members),
         ]

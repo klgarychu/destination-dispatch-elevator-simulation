@@ -80,6 +80,41 @@ def sample_tasks(file: Path) -> list[Task]:
     ]
 
 
+def test_m28_charts_show_only_the_own_limit_load(tmp_path: Path) -> None:
+    own_file = write_input(tmp_path, "own.csv", SIX_ROWS)
+    fixed_file = write_input(tmp_path, "fixed.csv", TWO_ROWS)
+    configs = [SimConfig(algorithm=algorithm) for algorithm in ALGORITHMS]
+    own = [
+        Task(f"own_{c.algorithm}", c, 1, "custom", "uniform", "light", 1, own_file) for c in configs
+    ]
+    fixed = [
+        Task(
+            f"fixed_{c.algorithm}",
+            c,
+            1,
+            "custom",
+            "uniform",
+            "light",
+            1,
+            fixed_file,
+            load_basis="fixed",
+        )
+        for c in configs
+    ]
+    run_suite(own, tmp_path / "own_only", workers=1)
+    run_suite(own + fixed, tmp_path / "both", workers=1)
+
+    assert draw(tmp_path / "own_only", tmp_path / "own_charts") == 0
+    assert draw(tmp_path / "both", tmp_path / "both_charts") == 0
+
+    drawn = sorted(path.name for path in (tmp_path / "own_charts").glob("*.png"))
+    assert drawn
+    for name in drawn:
+        assert (tmp_path / "both_charts" / name).read_bytes() == (
+            tmp_path / "own_charts" / name
+        ).read_bytes()
+
+
 def test_tst17_chart_data_holds_exactly_the_runs_in_the_report(tmp_path: Path) -> None:
     out = tmp_path / "out"
     compare(write_input(tmp_path, "first.csv", ONE_ROW), out)

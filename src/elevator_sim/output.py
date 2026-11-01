@@ -56,6 +56,7 @@ class RunRecord:
     building: str
     pattern: str
     load: str
+    load_basis: str
     seed: int
     settings: dict[str, Any]
     stats: dict[str, Any]

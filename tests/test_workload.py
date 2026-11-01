@@ -9,9 +9,11 @@ from elevator_sim.config import ConfigError
 from elevator_sim.requests import Request, load_requests
 from elevator_sim.workload import (
     BUILDINGS,
+    FIXED_LOAD_CASE,
     InputSpec,
     building_config,
     ensure_inputs,
+    fixed_inputs,
     generate_requests,
     input_name,
     input_requests,
@@ -19,6 +21,7 @@ from elevator_sim.workload import (
     load_rates,
     suite_inputs,
     write_requests,
+    write_suite,
 )
 
 
@@ -140,7 +143,7 @@ def test_ensure_inputs_writes_missing_files_and_accepts_ones_that_match_the_rate
 
     ensure_inputs(tmp_path, (1,))
 
-    assert len(written) == 128
+    assert len(written) == 160
     assert {path.name: path.read_bytes() for path in tmp_path.iterdir()} == written
 
 
@@ -282,6 +285,67 @@ def test_m27_each_case_has_the_building_its_name_states(
 
     assert (config.floors, config.elevators, config.capacity) == (floors, elevators, capacity)
     assert config.start_floor == 1
+
+
+def test_m28_the_fixed_load_case_has_the_lowest_limit_on_every_pattern() -> None:
+    rates = load_rates()
+
+    for pattern in ("uniform", "up_peak", "down_peak", "lunch"):
+        assert rates[FIXED_LOAD_CASE][pattern] == min(rates[case][pattern] for case in BUILDINGS)
+
+
+def test_m28_fixed_load_covers_every_case_but_the_one_whose_own_runs_are_that_load() -> None:
+    specs = list(fixed_inputs((1,)))
+
+    assert len(specs) == 7 * 4 * 4
+    assert all(spec.fixed and spec.building != FIXED_LOAD_CASE for spec in specs)
+
+
+@pytest.mark.parametrize(
+    "case",
+    ["6car-60floor-6cap", "9car-60floor-6cap", "3car-60floor-9cap", "3car-60floor-12cap"],
+)
+def test_m28_sixty_floor_cases_use_the_fixed_load_cases_own_file(case: str) -> None:
+    fixed = InputSpec(case, "lunch", "heavy", 2, fixed=True)
+    own = InputSpec(FIXED_LOAD_CASE, "lunch", "heavy", 2)
+    rates = load_rates()
+
+    assert fixed.name == own.name
+    assert input_requests(fixed, rates) == input_requests(own, rates)
+
+
+def test_m28_cases_of_one_height_share_a_fixed_load_file() -> None:
+    names = {
+        InputSpec(case, "lunch", "heavy", 2, fixed=True).name
+        for case in ("1car-10floor-6cap", "3car-10floor-6cap")
+    }
+
+    assert names == {"fixed-10floor_lunch_heavy_s2.csv"}
+
+
+@pytest.mark.parametrize(("case", "floors"), [("3car-10floor-6cap", 10), ("3car-35floor-6cap", 35)])
+def test_m28_another_height_keeps_every_arrival_and_redraws_only_the_floors(
+    case: str, floors: int
+) -> None:
+    rates = load_rates()
+    own = input_requests(InputSpec(FIXED_LOAD_CASE, "uniform", "overload", 1), rates)
+    fixed = input_requests(InputSpec(case, "uniform", "overload", 1, fixed=True), rates)
+
+    assert [(r.time, r.id) for r in fixed] == [(r.time, r.id) for r in own]
+    assert all(1 <= r.source <= floors and 1 <= r.dest <= floors for r in fixed)
+    assert all(r.source != r.dest for r in fixed)
+
+
+def test_m28_another_height_keeps_the_traffic_mix() -> None:
+    spec = InputSpec("3car-10floor-6cap", "up_peak", "overload", 1, fixed=True)
+
+    # About 330 requests, so one standard deviation of the 85% share is about 2 percentage points.
+    assert mix(input_requests(spec, load_rates())) == pytest.approx((0.85, 0.10, 0.05), abs=0.08)
+
+
+def test_m28_the_suite_writes_each_shared_file_once(tmp_path: Path) -> None:
+    assert write_suite(tmp_path, (1,)) == 160
+    assert len(list(tmp_path.iterdir())) == 160
 
 
 def test_every_suite_building_has_a_rate_for_every_pattern() -> None:

@@ -19,6 +19,7 @@ def row(
         "building": "3car-10floor-6cap",
         "pattern": "lunch",
         "load": "heavy",
+        "load_basis": "own_limit",
         "seed": seed,
         "unguarded": unguarded,
         "passengers": 100,
@@ -64,7 +65,7 @@ def test_report_states_input_counts_and_seeds() -> None:
     report = render_report([row("eta", 10.0, seed=1), row("eta", 12.0, seed=2)])
 
     assert "Runs: 2" in report
-    assert "Inputs: 2" in report
+    assert "Case and input pairs: 2" in report
     assert "Configurations: 1" in report
     assert "Seeds: 1, 2" in report
 
@@ -94,6 +95,22 @@ def test_report_has_one_section_per_building_pattern_and_load() -> None:
 
     assert "## 3car-10floor-6cap, lunch, heavy" in report
     assert "## 3car-10floor-6cap, lunch, light" in report
+
+
+def test_m28_fixed_load_sections_are_labelled_and_follow_the_own_limit_ones() -> None:
+    fixed = {**row("eta", 1.0), "load_basis": "fixed", "pattern": "uniform"}
+
+    report = render_report([fixed, row("eta", 2.0)])
+
+    own_section = report.index("## 3car-10floor-6cap, lunch, heavy\n")
+    assert own_section < report.index("## 3car-10floor-6cap, uniform, heavy, fixed load\n")
+
+
+def test_m28_the_report_explains_the_fixed_load_only_when_it_ran() -> None:
+    fixed = {**row("eta", 1.0), "load_basis": "fixed"}
+
+    assert "the same arrivals" in render_report([row("eta", 2.0), fixed])
+    assert "the same arrivals" not in render_report([row("eta", 2.0)])
 
 
 def test_report_gives_the_mean_and_the_spread_across_seeds() -> None:

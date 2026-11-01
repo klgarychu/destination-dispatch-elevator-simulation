@@ -35,9 +35,25 @@ from elevator_sim.output import (
 )
 from elevator_sim.report import render_report
 from elevator_sim.requests import load_requests
-from elevator_sim.workload import SEEDS, building_config, suite_inputs
+from elevator_sim.workload import (
+    FIXED,
+    OWN_LIMIT,
+    SEEDS,
+    building_config,
+    fixed_inputs,
+    suite_inputs,
+)
 
-_IDENTITY_COLUMNS = ["run_id", "config_id", "stage", "building", "pattern", "load", "seed"]
+_IDENTITY_COLUMNS = [
+    "run_id",
+    "config_id",
+    "stage",
+    "building",
+    "pattern",
+    "load",
+    "load_basis",
+    "seed",
+]
 _SETTINGS_COLUMNS = [
     "algorithm",
     "behaviour",
@@ -98,6 +114,7 @@ class Task:
     seed: int
     input_path: Path
     sample: bool = False
+    load_basis: str = OWN_LIMIT
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,15 +135,18 @@ def sample_inputs() -> set[tuple[str, str, str, int]]:
 def suite_tasks(inputs: Path, quick: bool = False) -> list[Task]:
     """Stage 1 as far as it is built: every algorithm on every input, in fixed order."""
     samples = sample_inputs()
+    seeds = (SEEDS[0],) if quick else SEEDS
     tasks = []
-    for spec in suite_inputs((SEEDS[0],) if quick else SEEDS):
+    for spec in (*suite_inputs(seeds), *fixed_inputs(seeds)):
         building = building_config(spec.building)
         path = inputs / spec.name
+        # Cases can share a fixed-load file, so those run ids name the case as well.
+        label = f"{spec.building}__{FIXED}_{path.stem}" if spec.fixed else path.stem
         for algorithm in ALGORITHMS:
             config = replace(building, algorithm=algorithm)
             tasks.append(
                 Task(
-                    f"{config_id(config)}__{path.stem}",
+                    f"{config_id(config)}__{label}",
                     config,
                     1,
                     spec.building,
@@ -134,7 +154,9 @@ def suite_tasks(inputs: Path, quick: bool = False) -> list[Task]:
                     spec.load,
                     spec.seed,
                     path,
-                    (spec.building, spec.pattern, spec.load, spec.seed) in samples,
+                    not spec.fixed
+                    and (spec.building, spec.pattern, spec.load, spec.seed) in samples,
+                    FIXED if spec.fixed else OWN_LIMIT,
                 )
             )
     return tasks
@@ -152,6 +174,7 @@ def file_tasks(requests: Path, building: SimConfig, building_name: str) -> list[
             "custom",
             0,
             requests,
+            load_basis="custom",
         )
         for config in (replace(building, algorithm=algorithm) for algorithm in ALGORITHMS)
     ]
@@ -191,7 +214,9 @@ def _is_current(task: Task, fingerprint: str, out: Path) -> bool:
 def _discard(task: Task, out: Path) -> None:
     """Remove a stale result first, so a run that then stalls can't leave it on show."""
     run_file(out, task.run_id).unlink(missing_ok=True)
-    shutil.rmtree(out / _sample_dir(task), ignore_errors=True)
+    # A run outside the sample may share its input file with a sample run, and so this folder.
+    if task.sample:
+        shutil.rmtree(out / _sample_dir(task), ignore_errors=True)
 
 
 def run_task(task: Task, fingerprint: str, out: Path) -> tuple[str, str, float]:
@@ -213,6 +238,7 @@ def run_task(task: Task, fingerprint: str, out: Path) -> tuple[str, str, float]:
         building=task.building,
         pattern=task.pattern,
         load=task.load,
+        load_basis=task.load_basis,
         seed=task.seed,
         settings=settings_record(task.config),
         stats=stats | _NOT_BUILT_YET,
@@ -276,13 +302,19 @@ def load_rows(tasks: Iterable[Task], out: Path) -> list[dict[str, Any]]:
 
 def aggregate(rows: Sequence[dict[str, Any]], keys: Sequence[str]) -> list[dict[str, Any]]:
     """Mean, min and max of each statistic across seeds, per configuration and input group."""
-    groups: dict[tuple[str, str, str, str], list[dict[str, Any]]] = {}
+    groups: dict[tuple[str, str, str, str, str], list[dict[str, Any]]] = {}
     for row in rows:
-        group = (row["config_id"], row["building"], row["pattern"], row["load"])
+        group = (
+            row["config_id"],
+            row["building"],
+            row["pattern"],
+            row["load"],
+            row["load_basis"],
+        )
         groups.setdefault(group, []).append(row)
 
     aggregated = []
-    for (config, building, pattern, load), members in groups.items():
+    for (config, building, pattern, load, load_basis), members in groups.items():
         entry: dict[str, Any] = {
             "config_id": config,
             "algorithm": members[0]["algorithm"],
@@ -290,6 +322,7 @@ def aggregate(rows: Sequence[dict[str, Any]], keys: Sequence[str]) -> list[dict[
             "building": building,
             "pattern": pattern,
             "load": load,
+            "load_basis": load_basis,
             "seeds": len(members),
         }
         for key in keys:
@@ -311,7 +344,16 @@ def write_statistics(
     )
 
     aggregated = aggregate(rows, AGGREGATE_KEYS)
-    columns = ["config_id", "algorithm", "behaviour", "building", "pattern", "load", "seeds"]
+    columns = [
+        "config_id",
+        "algorithm",
+        "behaviour",
+        "building",
+        "pattern",
+        "load",
+        "load_basis",
+        "seeds",
+    ]
     columns += [f"{key}_{part}" for key in AGGREGATE_KEYS for part in ("mean", "min", "max")]
     write_csv(
         out / "aggregate_stats.csv",
