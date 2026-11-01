@@ -1,8 +1,9 @@
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
-from elevator_sim.config import ConfigError, SimConfig, load_config
+from elevator_sim.config import ConfigError, ExpressCar, SimConfig, load_config, parse_serves
 
 
 def write_toml(path: Path, text: str) -> Path:
@@ -133,9 +134,80 @@ def test_tst12_rejects_a_missing_file(tmp_path: Path) -> None:
         ('[dispatch]\nassignment_rule = "none"\n', "Phase 5"),
         ('[dispatch]\nbehaviour = "strict"\n', "Phase 3"),
         ('[dispatch]\nbehaviour = "weighted"\n', "Phase 3"),
-        ('[[express]]\ncar = 1\nserves = "1,5"\n', "Phase 2"),
     ],
 )
 def test_m12_settings_from_later_phases_are_rejected(tmp_path: Path, toml: str, phase: str) -> None:
     with pytest.raises(ConfigError, match=phase):
         load_config(write_toml(tmp_path, toml))
+
+
+def test_tst12_reads_express_cars_from_the_file(tmp_path: Path) -> None:
+    toml = '[building]\nfloors = 8\nelevators = 3\n\n[[express]]\ncar = 3\nserves = "1,5-8"\n'
+
+    assert load_config(write_toml(tmp_path, toml)).express == (ExpressCar(3, (1, 5, 6, 7, 8)),)
+
+
+def test_tst12_cars_not_listed_are_normal(tmp_path: Path) -> None:
+    assert load_config(write_toml(tmp_path, "[building]\nfloors = 8\n")).express == ()
+
+
+@pytest.mark.parametrize(
+    ("text", "floors"),
+    [
+        ("1,5", (1, 5)),
+        ("1, 5-7", (1, 5, 6, 7)),
+        ("7-8,1", (1, 7, 8)),
+        ("2,2,3", (2, 3)),
+    ],
+)
+def test_tst12_serves_accepts_single_floors_and_ranges(text: str, floors: tuple[int, ...]) -> None:
+    assert parse_serves(text) == floors
+
+
+@pytest.mark.parametrize("text", ["", "a", "1,", "8-5", "1-2-3", "1.5,2"])
+def test_tst12_rejects_a_badly_written_floor_list(text: str) -> None:
+    with pytest.raises(ConfigError, match="serves"):
+        parse_serves(text)
+
+
+@pytest.mark.parametrize(
+    ("toml", "named"),
+    [
+        ('[[express]]\ncar = 4\nserves = "1,5"\n', "car 4"),
+        ('[[express]]\ncar = 0\nserves = "1,5"\n', "car 0"),
+        ('[[express]]\ncar = 2\nserves = "1,5"\n[[express]]\ncar = 2\nserves = "1,6"\n', "twice"),
+        ('[[express]]\ncar = 2\nserves = "5"\n', "at least 2"),
+        ('[[express]]\ncar = 2\nserves = "1,11"\n', "floor 11"),
+        ('[[express]]\ncar = "2"\nserves = "1,5"\n', "car"),
+        ("[[express]]\ncar = 2\nserves = 5\n", "serves"),
+        ("[[express]]\ncar = 2\n", "serves"),
+        ('[[express]]\nserves = "1,5"\n', "car"),
+        ('[[express]]\ncar = 2\nserves = "1,5"\nspeed = 2\n', "speed"),
+        ('[express]\ncar = 2\nserves = "1,5"\n', r"\[\[express\]\]"),
+    ],
+)
+def test_tst12_rejects_invalid_express_settings(tmp_path: Path, toml: str, named: str) -> None:
+    with pytest.raises(ConfigError, match=named):
+        load_config(write_toml(tmp_path, toml))
+
+
+def test_tst12_rejects_a_building_where_a_pair_of_floors_has_no_shared_car() -> None:
+    low, high = ExpressCar(1, (1, 2, 3)), ExpressCar(2, (1, 4, 5))
+
+    with pytest.raises(ConfigError, match="floors 2 and 4"):
+        SimConfig(floors=5, elevators=2, express=(low, high))
+
+
+def test_tst12_one_normal_car_always_passes_the_coverage_check() -> None:
+    config = SimConfig(
+        floors=5, elevators=3, express=(ExpressCar(1, (1, 2)), ExpressCar(2, (4, 5)))
+    )
+
+    assert len(config.express) == 2
+
+
+def test_tst12_express_cars_are_checked_again_when_a_setting_is_overridden() -> None:
+    config = SimConfig(floors=8, elevators=3, express=(ExpressCar(3, (1, 8)),))
+
+    with pytest.raises(ConfigError, match="car 3"):
+        replace(config, elevators=2)

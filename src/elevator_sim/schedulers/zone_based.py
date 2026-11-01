@@ -24,7 +24,14 @@ class ZoneBased(Scheduler):
         floor = request.dest if request.source == 1 else request.source
         for index, (low, high) in enumerate(zone_bounds(view.floors, len(view.cars))):
             if low <= floor <= high:
-                return view.cars[index].car_id
+                owner = view.cars[index]
+                if owner.can_serve(request.source, request.dest):
+                    return owner.car_id
+                nearest = min(
+                    view.eligible(request),
+                    key=lambda car: (abs(car.position - request.source), car.car_id),
+                )
+                return nearest.car_id
         raise ValueError(f"floor {floor} has no zone")
 
     def idle_target(self, car: CarView, view: FleetView) -> int | None:
@@ -33,4 +40,6 @@ class ZoneBased(Scheduler):
         if index >= len(zones):
             return None
         low, high = zones[index]
-        return (low + high) // 2
+        middle = (low + high) // 2
+        served = [floor for floor in range(1, view.floors + 1) if car.can_serve(floor, floor)]
+        return min(served, key=lambda floor: (abs(floor - middle), floor))

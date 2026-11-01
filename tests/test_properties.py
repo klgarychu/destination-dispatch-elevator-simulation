@@ -4,7 +4,7 @@ import hypothesis.strategies as st
 from hypothesis import HealthCheck, given, settings
 from hypothesis.strategies import DrawFn
 
-from elevator_sim.config import ALGORITHMS, SimConfig
+from elevator_sim.config import ALGORITHMS, ExpressCar, SimConfig
 from elevator_sim.engine import SimulationResult, simulate
 from elevator_sim.requests import Request
 from helpers import assert_rules_hold
@@ -13,12 +13,20 @@ from helpers import assert_rules_hold
 @st.composite
 def scenarios(draw: DrawFn, max_requests: int = 30) -> tuple[SimConfig, list[Request]]:
     floors = draw(st.integers(2, 20))
+    elevators = draw(st.integers(1, 4))
+    # Car 1 stays normal, so every pair of floors has a car (B8).
+    express = tuple(
+        ExpressCar(car, tuple(sorted(draw(st.sets(st.integers(1, floors), min_size=2)))))
+        for car in range(2, elevators + 1)
+        if draw(st.booleans())
+    )
     config = SimConfig(
         floors=floors,
-        elevators=draw(st.integers(1, 4)),
+        elevators=elevators,
         capacity=draw(st.integers(1, 5)),
         start_floor=draw(st.integers(1, floors)),
         algorithm=draw(st.sampled_from(ALGORITHMS)),
+        express=express,
     )
     count = draw(st.integers(0, max_requests))
     requests = []
@@ -38,6 +46,11 @@ def test_tst09_rules_hold_on_random_inputs(scenario: tuple[SimConfig, list[Reque
 
     assert len(result.passengers) == len(requests)
     assert_rules_hold(result, config.capacity, config.floors)
+    served = {car.car: car.serves for car in config.express}
+    for passenger in result.passengers:
+        if passenger.car_id in served:
+            assert passenger.request.source in served[passenger.car_id]
+            assert passenger.request.dest in served[passenger.car_id]
 
 
 @settings(max_examples=50, deadline=None, suppress_health_check=[HealthCheck.too_slow])

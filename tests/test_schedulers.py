@@ -5,7 +5,7 @@ from dataclasses import replace
 import pytest
 
 from elevator_sim.boarding.behaviours import make_behaviour
-from elevator_sim.config import ALGORITHMS, SimConfig
+from elevator_sim.config import ALGORITHMS, ExpressCar, SimConfig
 from elevator_sim.elevators.normal import NormalElevator
 from elevator_sim.engine import simulate
 from elevator_sim.forecast import PredictedTrip
@@ -17,7 +17,7 @@ from elevator_sim.schedulers.nearest_car import NearestCar, suitability
 from elevator_sim.schedulers.registry import make_scheduler
 from elevator_sim.schedulers.round_robin import RoundRobin
 from elevator_sim.schedulers.zone_based import ZoneBased, zone_bounds
-from helpers import car_at, view_of
+from helpers import car_at, express_at, view_of
 
 UP, DOWN = Direction.UP, Direction.DOWN
 
@@ -345,3 +345,66 @@ def test_tst01_every_algorithm_reproduces_the_one_car_pdf_sample(algorithm: str)
 
 def test_car_at_builds_cars_with_the_shared_behaviour() -> None:
     assert car_at(1, 1).behaviour is make_behaviour("min_time")
+
+
+def test_tst11_round_robin_skips_a_car_that_cannot_serve_the_trip() -> None:
+    view = view_of(car_at(1, 1), express_at(2, 1, (1, 8, 9, 10)), car_at(3, 1))
+    scheduler = RoundRobin()
+
+    # A trip within the low floors can't use car 2, so turns go 1, 3, 1.
+    assert [scheduler.assign(request(2, 3), view) for _ in range(3)] == [1, 3, 1]
+
+
+def test_tst11_round_robin_uses_an_express_car_when_it_can_serve_the_trip() -> None:
+    view = view_of(car_at(1, 1), express_at(2, 1, (1, 8, 9, 10)), car_at(3, 1))
+    scheduler = RoundRobin()
+
+    assert [scheduler.assign(request(1, 9), view) for _ in range(3)] == [1, 2, 3]
+
+
+def test_tst11_zone_based_falls_back_to_the_nearest_eligible_car() -> None:
+    # Zones on 10 floors and 3 cars are 1-4, 5-7 and 8-10. Floor 6 belongs to car 2, which can't
+    # serve it. Cars 1 and 3 are 4 and 3 floors from the source, so car 3 is the nearest.
+    view = view_of(car_at(1, 2), express_at(2, 8, (1, 8, 9, 10)), car_at(3, 9))
+
+    assert ZoneBased().assign(request(6, 7), view) == 3
+
+
+def test_tst11_zone_based_fallback_ties_go_to_the_lower_car() -> None:
+    view = view_of(car_at(1, 4), express_at(2, 8, (1, 8, 9, 10)), car_at(3, 8))
+
+    assert ZoneBased().assign(request(6, 7), view) == 1
+
+
+def test_tst11_zone_based_keeps_the_zone_car_when_it_can_serve_the_trip() -> None:
+    view = view_of(car_at(1, 2), express_at(2, 8, (1, 5, 6, 7)), car_at(3, 9))
+
+    assert ZoneBased().assign(request(5, 6), view) == 2
+
+
+def test_d27_an_express_car_parks_at_the_nearest_floor_it_serves() -> None:
+    # Car 2's zone is 5-7, so its middle floor is 6, which it doesn't serve.
+    fleet = (car_at(1, 2), express_at(2, 8, (1, 8, 9, 10)), car_at(3, 9))
+    view = view_of(*fleet)
+
+    assert ZoneBased().idle_target(view.cars[1], view) == 8
+
+
+def test_d27_parking_ties_go_to_the_lower_floor() -> None:
+    fleet = (car_at(1, 2), express_at(2, 8, (1, 4, 8)), car_at(3, 9))
+    view = view_of(*fleet)
+
+    assert ZoneBased().idle_target(view.cars[1], view) == 4
+
+
+@pytest.mark.parametrize("algorithm", ALGORITHMS)
+def test_b8_no_algorithm_puts_a_passenger_on_a_car_that_skips_their_floors(algorithm: str) -> None:
+    config = SimConfig(
+        floors=10, elevators=3, algorithm=algorithm, express=(ExpressCar(2, (1, 8, 9, 10)),)
+    )
+    rows = [Request(t, f"p{t}", 2 + t % 5, 7) for t in range(12)]
+
+    result = simulate(rows, config)
+
+    assert all(p.car_id != 2 for p in result.passengers)
+    assert len(result.passengers) == 12

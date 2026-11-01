@@ -4,6 +4,7 @@ from collections.abc import Sequence
 
 from elevator_sim.boarding.behaviours import make_behaviour
 from elevator_sim.elevators.base import Elevator
+from elevator_sim.elevators.express import ExpressElevator
 from elevator_sim.elevators.normal import NormalElevator
 from elevator_sim.engine import SimulationResult
 from elevator_sim.forecast import Forecaster
@@ -62,6 +63,14 @@ def car_at(
     for index, (name, source, dest) in enumerate(waiting):
         car.assign(Passenger(Request(0, name, source, dest), 50 + index, car_id))
     return car
+
+
+def express_at(
+    car_id: int, position: int, served: Sequence[int], floors: int = 10, capacity: int = 6
+) -> ExpressElevator:
+    """An idle express car at a floor it serves."""
+    behaviour = make_behaviour("min_time")
+    return ExpressElevator(car_id, floors, capacity, position, behaviour, served)
 
 
 def view_of(*cars: Elevator, now: int = 0, floors: int = 10, capacity: int = 6) -> FleetView:

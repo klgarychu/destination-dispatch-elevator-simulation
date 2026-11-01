@@ -4,7 +4,7 @@ import csv
 import json
 from pathlib import Path
 
-from elevator_sim.config import SimConfig
+from elevator_sim.config import ExpressCar, SimConfig
 from elevator_sim.engine import simulate
 from elevator_sim.output import (
     RunRecord,
@@ -100,6 +100,14 @@ def test_summary_config_holds_all_settings_in_full() -> None:
         "rule_value": None,
         "unguarded": True,
     }
+
+
+def test_summary_lists_the_express_cars() -> None:
+    config = SimConfig(floors=8, elevators=2, express=(ExpressCar(2, (1, 5, 6, 7, 8)),))
+
+    summary = summary_data(simulate([Request(0, "a", 1, 6)], config))
+
+    assert summary["building"]["express_cars"] == [2]
 
 
 def a_record(run_id: str = "run", sample_dir: str | None = None) -> RunRecord:

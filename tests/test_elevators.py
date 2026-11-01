@@ -5,8 +5,9 @@ exchanges passengers first, then moves one floor, so it reaches floor f in abs(f
 """
 
 from elevator_sim.boarding.behaviours import make_behaviour
-from elevator_sim.config import SimConfig
+from elevator_sim.config import ExpressCar, SimConfig
 from elevator_sim.elevators.base import Elevator
+from elevator_sim.elevators.express import ExpressElevator
 from elevator_sim.elevators.factory import build_fleet
 from elevator_sim.elevators.normal import NormalElevator
 from elevator_sim.requests import Direction, Passenger, Request
@@ -186,3 +187,43 @@ def test_car_counts_its_moves_with_and_without_riders() -> None:
 
     # Two empty moves down to floor 1, then one loaded move up to floor 2.
     assert (elevator.moves, elevator.empty_moves, elevator.rider_moves) == (3, 2, 1)
+
+
+def express_building(start_floor: int = 1) -> SimConfig:
+    return SimConfig(
+        floors=8, elevators=2, start_floor=start_floor, express=(ExpressCar(2, (1, 5, 6, 7, 8)),)
+    )
+
+
+def test_tst12_cars_listed_as_express_serve_only_their_floors() -> None:
+    normal, express = build_fleet(express_building())
+
+    assert isinstance(normal, NormalElevator)
+    assert isinstance(express, ExpressElevator)
+    assert express.can_serve(1, 6)
+    assert not express.can_serve(1, 3)
+    assert not express.can_serve(3, 6)
+    assert normal.can_serve(1, 3)
+
+
+def test_b9_an_express_car_starts_at_its_lowest_served_floor() -> None:
+    assert [car.position for car in build_fleet(express_building(start_floor=3))] == [3, 1]
+
+
+def test_tst12_an_express_car_keeps_a_start_floor_it_serves() -> None:
+    assert [car.position for car in build_fleet(express_building(start_floor=6))] == [6, 6]
+
+
+def test_tst12_passing_unserved_floors_takes_one_tick_each() -> None:
+    fleet = build_fleet(express_building())
+    express = fleet[1]
+
+    # From floor 1 to floor 6 is five ticks, whether or not the floors between are served.
+    assert run(express, passenger(0, 1, 6)) == 5
+
+
+def test_tst12_a_copy_of_an_express_car_still_knows_its_floors() -> None:
+    twin = build_fleet(express_building())[1].clone()
+
+    assert not twin.serves(3)
+    assert twin.serves(5)

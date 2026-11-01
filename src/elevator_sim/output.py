@@ -127,7 +127,7 @@ def summary_data(result: SimulationResult) -> dict[str, Any]:
             "floors": config.floors,
             "elevators": config.elevators,
             "capacity": config.capacity,
-            "express_cars": [],
+            "express_cars": [car.car for car in config.express],
         },
         "passengers": len(result.passengers),
         "ticks": result.ticks,
