@@ -4,7 +4,7 @@ import hypothesis.strategies as st
 from hypothesis import HealthCheck, example, given, settings
 from hypothesis.strategies import DrawFn
 
-from elevator_sim.config import SimConfig
+from elevator_sim.config import ExpressCar, SimConfig
 from elevator_sim.elevators.normal import NormalElevator
 from elevator_sim.engine import simulate
 from elevator_sim.forecast import Forecast
@@ -73,12 +73,22 @@ class ReferenceSpy(Scheduler):
 @st.composite
 def scenarios(draw: DrawFn) -> tuple[SimConfig, list[Request]]:
     floors = draw(st.integers(2, 15))
+    elevators = draw(st.integers(1, 3))
+    # Car 1 stays normal, so every pair of floors has a car (B8).
+    express = tuple(
+        ExpressCar(car, tuple(sorted(draw(st.sets(st.integers(1, floors), min_size=2)))))
+        for car in range(2, elevators + 1)
+        if draw(st.booleans())
+    )
     config = SimConfig(
         floors=floors,
-        elevators=draw(st.integers(1, 3)),
+        elevators=elevators,
         capacity=draw(st.integers(1, 4)),
         start_floor=draw(st.integers(1, floors)),
-        algorithm=draw(st.sampled_from(("round_robin", "eta", "marginal_insertion"))),
+        algorithm=draw(
+            st.sampled_from(("round_robin", "eta", "marginal_insertion", "rush_express"))
+        ),
+        express=express,
     )
     requests = []
     for index in range(draw(st.integers(1, 25))):
