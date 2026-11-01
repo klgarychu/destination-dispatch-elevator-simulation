@@ -4,7 +4,7 @@ import hypothesis.strategies as st
 from hypothesis import HealthCheck, given, settings
 from hypothesis.strategies import DrawFn
 
-from elevator_sim.config import ALGORITHMS, ExpressCar, SimConfig
+from elevator_sim.config import ALL_ALGORITHMS, ExpressCar, SimConfig
 from elevator_sim.engine import SimulationResult, simulate
 from elevator_sim.requests import Request
 from helpers import assert_rules_hold
@@ -25,7 +25,7 @@ def scenarios(draw: DrawFn, max_requests: int = 30) -> tuple[SimConfig, list[Req
         elevators=elevators,
         capacity=draw(st.integers(1, 5)),
         start_floor=draw(st.integers(1, floors)),
-        algorithm=draw(st.sampled_from(ALGORITHMS)),
+        algorithm=draw(st.sampled_from(ALL_ALGORITHMS)),
         express=express,
     )
     count = draw(st.integers(0, max_requests))

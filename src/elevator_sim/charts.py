@@ -21,7 +21,7 @@ from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 from matplotlib.ticker import FixedLocator, FuncFormatter, LogLocator, NullLocator
 
-from elevator_sim.config import ALGORITHMS, ConfigError
+from elevator_sim.config import ALL_ALGORITHMS, ConfigError
 from elevator_sim.metrics import nearest_rank
 from elevator_sim.output import RunRecord, read_manifest, read_run_record
 from elevator_sim.workload import FIXED, LOADS, PATTERNS, input_name
@@ -32,6 +32,7 @@ COLOURS = {
     "zone_based": "#1baf7a",
     "eta": "#56b4e9",
     "marginal_insertion": "#b5179e",
+    "rush_express": "#7d5a00",
 }
 MARKERS = {
     "round_robin": "o",
@@ -39,6 +40,7 @@ MARKERS = {
     "zone_based": "^",
     "eta": "D",
     "marginal_insertion": "P",
+    "rush_express": "X",
 }
 TITLES = {
     "algorithm_comparison": "Mean total time per passenger, by algorithm",
@@ -68,7 +70,7 @@ _WHOLE_TICKS = FuncFormatter(lambda value, _: f"{value:,.0f}")
 
 def fixed_order(algorithms: Iterable[str]) -> list[str]:
     present = set(algorithms)
-    return [name for name in ALGORITHMS if name in present]
+    return [name for name in ALL_ALGORITHMS if name in present]
 
 
 def _in_order(values: Iterable[str], order: Sequence[str]) -> list[str]:

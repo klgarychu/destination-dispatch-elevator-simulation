@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 
 from elevator_sim.cli import main
-from elevator_sim.config import ALGORITHMS, SimConfig, config_id
+from elevator_sim.config import ALGORITHMS, ALL_ALGORITHMS, SimConfig, config_id
 from elevator_sim.experiment import Task, run_suite
 from elevator_sim.output import MANIFEST_FILE, read_manifest
 
@@ -398,10 +398,10 @@ def test_tst18_titles_notes_and_legends_fit_a_chart_of_one_input(
 def test_tst18_each_algorithm_has_one_distinct_colour_and_marker() -> None:
     from elevator_sim.charts import COLOURS, MARKERS
 
-    assert list(COLOURS) == list(ALGORITHMS)
-    assert len(set(COLOURS.values())) == 5
-    assert list(MARKERS) == list(ALGORITHMS)
-    assert len(set(MARKERS.values())) == 5
+    assert list(COLOURS) == list(ALL_ALGORITHMS)
+    assert len(set(COLOURS.values())) == len(ALL_ALGORITHMS)
+    assert list(MARKERS) == list(ALL_ALGORITHMS)
+    assert len(set(MARKERS.values())) == len(ALL_ALGORITHMS)
 
 
 def test_tst18_chart_order_is_fixed_whatever_order_the_data_arrives_in() -> None:

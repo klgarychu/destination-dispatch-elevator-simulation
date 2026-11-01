@@ -5,6 +5,7 @@ from elevator_sim.schedulers.eta import Eta
 from elevator_sim.schedulers.marginal_insertion import MarginalInsertion
 from elevator_sim.schedulers.nearest_car import NearestCar
 from elevator_sim.schedulers.round_robin import RoundRobin
+from elevator_sim.schedulers.rush_express import RushExpress
 from elevator_sim.schedulers.zone_based import ZoneBased
 
 
@@ -15,5 +16,6 @@ def make_scheduler(name: str) -> Scheduler:
         "zone_based": ZoneBased,
         "eta": Eta,
         "marginal_insertion": MarginalInsertion,
+        "rush_express": RushExpress,
     }
     return schedulers[name]()

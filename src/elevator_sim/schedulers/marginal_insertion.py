@@ -6,9 +6,11 @@ because a small insertion can change a schedule's structure: one taken seat can 
 onto the next sweep.
 """
 
+from collections.abc import Iterable
+
 from elevator_sim.forecast import Forecast
 from elevator_sim.requests import Request
-from elevator_sim.schedulers.base import FleetView, Scheduler
+from elevator_sim.schedulers.base import CarView, FleetView, Scheduler
 
 
 def marginal_cost(request: Request, baseline: Forecast, candidate: Forecast) -> int:
@@ -25,14 +27,17 @@ def marginal_cost(request: Request, baseline: Forecast, candidate: Forecast) -> 
 class MarginalInsertion(Scheduler):
     name = "marginal_insertion"
 
-    def costs(self, request: Request, view: FleetView) -> dict[int, int]:
+    def costs(
+        self, request: Request, view: FleetView, cars: Iterable[CarView] | None = None
+    ) -> dict[int, int]:
+        """The cost of each car, from all eligible cars unless a narrower choice is given."""
         return {
             car.car_id: marginal_cost(
                 request,
                 view.baseline_forecast(car.car_id),
                 view.candidate_forecast(car.car_id, request),
             )
-            for car in view.eligible(request)
+            for car in (view.eligible(request) if cars is None else cars)
         }
 
     def assign(self, request: Request, view: FleetView) -> int:

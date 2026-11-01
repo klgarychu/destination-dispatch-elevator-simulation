@@ -4,7 +4,7 @@ import statistics
 from collections.abc import Sequence
 from typing import Any
 
-from elevator_sim.config import ALGORITHMS
+from elevator_sim.config import ALL_ALGORITHMS
 from elevator_sim.workload import BUILDINGS, FIXED, FIXED_LOAD_CASE, LOADS, OWN_LIMIT, PATTERNS
 
 _COLUMNS = (
@@ -49,7 +49,7 @@ def _table(rows: Sequence[dict[str, Any]]) -> list[str]:
     ordered = sorted(
         configs,
         key=lambda config: _place(
-            ALGORITHMS, next(r["algorithm"] for r in rows if r["config_id"] == config)
+            ALL_ALGORITHMS, next(r["algorithm"] for r in rows if r["config_id"] == config)
         ),
     )
     for config in ordered:

@@ -5,17 +5,20 @@ from dataclasses import replace
 import pytest
 
 from elevator_sim.boarding.behaviours import make_behaviour
-from elevator_sim.config import ALGORITHMS, ExpressCar, SimConfig
+from elevator_sim.config import ALGORITHMS, ALL_ALGORITHMS, ExpressCar, SimConfig
+from elevator_sim.elevators.base import Elevator
 from elevator_sim.elevators.normal import NormalElevator
 from elevator_sim.engine import simulate
 from elevator_sim.forecast import PredictedTrip
 from elevator_sim.metrics import wait_time
 from elevator_sim.requests import Direction, Request
+from elevator_sim.schedulers.base import FleetView
 from elevator_sim.schedulers.eta import Eta
 from elevator_sim.schedulers.marginal_insertion import MarginalInsertion, marginal_cost
 from elevator_sim.schedulers.nearest_car import NearestCar, suitability
 from elevator_sim.schedulers.registry import make_scheduler
 from elevator_sim.schedulers.round_robin import RoundRobin
+from elevator_sim.schedulers.rush_express import RushExpress
 from elevator_sim.schedulers.zone_based import ZoneBased, zone_bounds
 from helpers import car_at, express_at, view_of
 
@@ -408,3 +411,116 @@ def test_b8_no_algorithm_puts_a_passenger_on_a_car_that_skips_their_floors(algor
 
     assert all(p.car_id != 2 for p in result.passengers)
     assert len(result.passengers) == 12
+
+
+def tall_view(*cars: Elevator) -> FleetView:
+    return view_of(*cars, floors=60)
+
+
+def tall_fleet() -> tuple[NormalElevator, ...]:
+    """Car 1 is far away, and cars 2 and 3 tie at the lobby, so with no rush car 2 wins."""
+    return (car_at(1, 50, floors=60), car_at(2, 1, floors=60), car_at(3, 1, floors=60))
+
+
+def rush_scheduler(view: FleetView, from_lobby: int = 30, elsewhere: int = 0) -> RushExpress:
+    """A scheduler that has seen this many requests from the lobby, then from elsewhere."""
+    scheduler = RushExpress()
+    for index in range(from_lobby):
+        scheduler.assign(request(1, 2, f"lobby{index}"), view)
+    for index in range(elsewhere):
+        scheduler.assign(request(5, 6, f"other{index}"), view)
+    return scheduler
+
+
+def test_m31_a_high_trip_in_a_rush_goes_to_the_high_rise_car() -> None:
+    view = tall_view(*tall_fleet())
+
+    assert MarginalInsertion().assign(request(1, 40), view) == 2
+    assert rush_scheduler(view).assign(request(1, 40), view) == 3
+
+
+def test_m31_a_low_trip_in_a_rush_goes_to_the_low_rise_car() -> None:
+    fleet = (car_at(1, 50, floors=60), car_at(2, 3, floors=60), car_at(3, 1, floors=60))
+    view = tall_view(*fleet)
+
+    # Car 3 is at the lobby and car 2 is two floors away, so with no rush car 3 wins.
+    assert MarginalInsertion().assign(request(1, 10), view) == 3
+    assert rush_scheduler(view).assign(request(1, 10), view) == 2
+
+
+def test_m31_a_trip_across_the_middle_in_a_rush_uses_the_car_that_serves_every_floor() -> None:
+    view = tall_view(*tall_fleet())
+
+    assert rush_scheduler(view).assign(request(10, 40), view) == 1
+
+
+@pytest.mark.parametrize(("dest", "car"), [(30, 2), (31, 3)])
+def test_m31_the_high_rise_floors_start_above_the_middle_of_the_building(
+    dest: int, car: int
+) -> None:
+    fleet = (car_at(1, 50, floors=60), car_at(2, 3, floors=60), car_at(3, 3, floors=60))
+    view = tall_view(*fleet)
+
+    assert rush_scheduler(view).assign(request(1, dest), view) == car
+
+
+def test_m31_seventy_percent_from_the_lobby_is_a_rush() -> None:
+    view = tall_view(*tall_fleet())
+    scheduler = rush_scheduler(view, from_lobby=20, elsewhere=9)
+
+    # The new request is the 21st from the lobby out of 30, which is 70%.
+    assert scheduler.assign(request(1, 40), view) == 3
+
+
+def test_m31_less_than_seventy_percent_from_the_lobby_is_not_a_rush() -> None:
+    view = tall_view(*tall_fleet())
+    scheduler = rush_scheduler(view, from_lobby=19, elsewhere=10)
+
+    # The new request is the 20th from the lobby out of 30.
+    assert scheduler.assign(request(1, 40), view) == 2
+
+
+def test_m31_there_is_no_rush_until_the_window_has_filled() -> None:
+    view = tall_view(*tall_fleet())
+    scheduler = rush_scheduler(view, from_lobby=28)
+
+    # Only 29 requests are known, all from the lobby.
+    assert scheduler.assign(request(1, 40), view) == 2
+
+
+def test_m31_a_rush_ends_when_the_window_no_longer_shows_one() -> None:
+    view = tall_view(*tall_fleet())
+    scheduler = rush_scheduler(view, from_lobby=30, elsewhere=11)
+
+    # After 11 others and this request's 19 lobby neighbours, the share is 19 in 30.
+    assert scheduler.assign(request(1, 40), view) == 2
+
+
+def test_m31_the_split_gives_way_when_no_car_in_it_can_serve_the_trip() -> None:
+    # Only car 1 may cross the middle in a rush, but this car 1 can't stop at floor 10 or 40.
+    fleet = (express_at(1, 1, (1, 2), floors=60), car_at(2, 1, floors=60), car_at(3, 1, floors=60))
+    view = tall_view(*fleet)
+
+    assert rush_scheduler(view).assign(request(10, 40), view) == 2
+
+
+def test_m31_every_car_serves_every_trip_when_there_is_only_one_car() -> None:
+    view = tall_view(car_at(1, 50, floors=60))
+
+    assert rush_scheduler(view).assign(request(10, 40), view) == 1
+
+
+def test_m31_with_no_rush_a_whole_run_matches_marginal_insertion() -> None:
+    rows = [Request(t, f"p{t}", 2 + t % 7, 12 + t % 9) for t in range(60)]
+    config = SimConfig(floors=30, elevators=3, capacity=2)
+
+    plain = simulate(rows, replace(config, algorithm="marginal_insertion"))
+    rush = simulate(rows, replace(config, algorithm="rush_express"))
+
+    assert rush.positions == plain.positions
+    assert [p.car_id for p in rush.passengers] == [p.car_id for p in plain.passengers]
+
+
+def test_m31_it_is_listed_after_the_five_that_phase_1_compared() -> None:
+    assert (*ALGORITHMS, "rush_express") == ALL_ALGORITHMS
+    assert make_scheduler("rush_express").name == "rush_express"

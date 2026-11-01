@@ -7,8 +7,9 @@ from itertools import combinations
 from pathlib import Path
 from typing import Any
 
-# The fixed display order (G4).
+# The fixed display order (G4). Phase 1 compared the first five, so its suite stays on those.
 ALGORITHMS = ("round_robin", "nearest_car", "zone_based", "eta", "marginal_insertion")
+ALL_ALGORITHMS = (*ALGORITHMS, "rush_express")
 BEHAVIOURS = ("min_time",)
 
 # Settings the design defines but this phase doesn't build. Accepting them silently would let a
@@ -102,8 +103,9 @@ class SimConfig:
             raise ConfigError(f"capacity must be at least 1, not {self.capacity}")
         if not 1 <= self.start_floor <= self.floors:
             raise ConfigError(f"start_floor {self.start_floor} is outside 1..{self.floors}")
-        if self.algorithm not in ALGORITHMS:
-            raise ConfigError(f"unknown algorithm {self.algorithm!r}: use {', '.join(ALGORITHMS)}")
+        if self.algorithm not in ALL_ALGORITHMS:
+            names = ", ".join(ALL_ALGORITHMS)
+            raise ConfigError(f"unknown algorithm {self.algorithm!r}: use {names}")
         if self.behaviour in _LATER_BEHAVIOURS:
             phase = _LATER_BEHAVIOURS[self.behaviour]
             raise ConfigError(f"behaviour {self.behaviour!r} arrives in Phase {phase}")
