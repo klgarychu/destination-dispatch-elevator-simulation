@@ -390,3 +390,32 @@ def test_m6_generate_calibrate_runs_no_guard_unless_asked(
     assert main(["generate", "--calibrate", "--config", config, "--out", out, *options]) == 0
 
     assert calls[0][-1] == guard
+
+
+@pytest.mark.parametrize(
+    ("options", "expected"),
+    [
+        ([], ("weighted", 0.5)),
+        (["--behaviour", "min_time"], ("min_time", None)),
+        (["--behaviour", "strict"], ("strict", None)),
+        (["--behaviour", "weighted"], ("weighted", 1.0)),
+        (["--behaviour", "weighted", "--weight", "2"], ("weighted", 2.0)),
+        (["--weight", "2"], ("weighted", 2.0)),
+    ],
+)
+def test_tst17_a_behaviour_on_the_command_line_replaces_the_files_behaviour_and_weight(
+    tmp_path: Path, options: list[str], expected: tuple[str, float | None]
+) -> None:
+    config = tmp_path / "weighted.toml"
+    config.write_text(
+        '[building]\nfloors = 60\nelevators = 1\n\n[dispatch]\nbehaviour = "weighted"\n'
+        "fairness_weight = 0.5\n",
+        encoding="utf-8",
+    )
+    out = tmp_path / "out"
+    arguments = ["run", "--requests", SAMPLE, "--config", str(config), "--out", str(out)]
+
+    assert main([*arguments, *options]) == 0
+
+    settings = saved_settings(out)
+    assert (settings["behaviour"], settings["fairness_weight"]) == expected

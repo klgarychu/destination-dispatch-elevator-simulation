@@ -185,8 +185,8 @@ def sample_inputs() -> set[tuple[str, str, str, int]]:
     }
 
 
-def suite_tasks(inputs: Path, quick: bool = False) -> list[Task]:
-    """Phase 1: every algorithm on every input, in fixed order, with no guard as it was run."""
+def suite_tasks(inputs: Path, quick: bool = False, guard: str = "none") -> list[Task]:
+    """Phase 1: every algorithm on every input in fixed order, with no guard unless one is given."""
     samples = sample_inputs()
     seeds = (SEEDS[0],) if quick else SEEDS
     tasks = []
@@ -196,7 +196,7 @@ def suite_tasks(inputs: Path, quick: bool = False) -> list[Task]:
         # Cases can share a fixed-load file, so those run ids name the case as well.
         label = f"{spec.building}__{FIXED}_{path.stem}" if spec.fixed else path.stem
         for algorithm in ALGORITHMS:
-            config = replace(building, algorithm=algorithm, guard="none")
+            config = replace(building, algorithm=algorithm, guard=guard)
             tasks.append(
                 Task(
                     f"{config_id(config)}__{label}",
@@ -309,15 +309,15 @@ def _case_tasks(
     return tasks
 
 
-def express_tasks(inputs: Path, quick: bool = False) -> list[Task]:
-    """Phase 2 (M30): the express cases, all on `min_time` with no guard, as they were run."""
-    configs = _seat_configs((("min_time", None),), "none")
+def express_tasks(inputs: Path, quick: bool = False, guard: str = "none") -> list[Task]:
+    """Phase 2 (M30): the express cases on `min_time`, with no guard unless one is given."""
+    configs = _seat_configs((("min_time", None),), guard)
     return _case_tasks(inputs, quick, EXPRESS_OWN_LIMIT, EXPRESS_BUILDINGS, configs)
 
 
-def behaviour_tasks(inputs: Path, quick: bool = False) -> list[Task]:
-    """Phase 3 (M32): every seat setting on every algorithm, with no guard, as they were run."""
-    configs = _seat_configs(SEAT_SETTINGS, "none")
+def behaviour_tasks(inputs: Path, quick: bool = False, guard: str = "none") -> list[Task]:
+    """Phase 3 (M32): every seat setting on every algorithm, with no guard unless one is given."""
+    configs = _seat_configs(SEAT_SETTINGS, guard)
     return _case_tasks(inputs, quick, BEHAVIOUR_OWN_LIMIT, BEHAVIOUR_SHARED, configs)
 
 
@@ -338,7 +338,15 @@ def stage_2_tasks(inputs: Path, quick: bool = False) -> list[Task]:
 
 
 def file_tasks(requests: Path, building: SimConfig, building_name: str) -> list[Task]:
-    """Every configuration on one request file."""
+    """Every Stage 1 configuration on one request file, with the file's building and guard.
+
+    The file's own algorithm, behaviour and weight are replaced, so every one is compared.
+    """
+    configs = [
+        replace(building, algorithm=algorithm, behaviour=behaviour, fairness_weight=weight)
+        for behaviour, weight in SEAT_SETTINGS
+        for algorithm in ALL_ALGORITHMS
+    ]
     return [
         Task(
             f"{config_id(config)}__{requests.stem}",
@@ -351,7 +359,7 @@ def file_tasks(requests: Path, building: SimConfig, building_name: str) -> list[
             requests,
             load_basis="custom",
         )
-        for config in (replace(building, algorithm=algorithm) for algorithm in ALGORITHMS)
+        for config in configs
     ]
 
 

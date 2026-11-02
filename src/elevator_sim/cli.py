@@ -61,6 +61,9 @@ def _config_from(args: argparse.Namespace) -> SimConfig:
         )
         if (value := getattr(args, name, None)) is not None
     }
+    # A behaviour given here replaces the file's behaviour and its weight, unless a weight is too.
+    if "behaviour" in overrides and "fairness_weight" not in overrides:
+        overrides["fairness_weight"] = None
     return replace(config, **overrides)
 
 
@@ -93,21 +96,27 @@ def _generate(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
-def _suite(phase: int, stage: str, inputs: Path, quick: bool) -> list[Task]:
-    """The suite of a phase. Phases 1 to 3 had only Stage 1, so they keep their own suites."""
+def _suite(phase: int, stage: str, guard: str | None, inputs: Path, quick: bool) -> list[Task]:
+    """The suite of a phase. Phases 1 to 3 had only Stage 1, so they keep their own suites.
+
+    They ran with no guard, and `guard` runs them again with one.
+    """
     if stage not in ("all", "1", "2"):
         raise ConfigError(f"unknown stage {stage!r}: use all, 1 or 2")
     if phase < 4:
         if stage == "2":
             raise ConfigError(f"Stage 2 runs only in the Phase 4 suite, not Phase {phase}")
-        return {1: suite_tasks, 2: express_tasks, 3: behaviour_tasks}[phase](inputs, quick)
+        suite = {1: suite_tasks, 2: express_tasks, 3: behaviour_tasks}[phase]
+        return suite(inputs, quick, guard or "none")
+    if guard is not None:
+        raise ConfigError("--guard applies to --phase 1, 2 or 3: the Phase 4 suite sets its own")
     tasks = stage_1_tasks(inputs, quick) if stage in ("all", "1") else []
     return tasks + (stage_2_tasks(inputs, quick) if stage in ("all", "2") else [])
 
 
 def _compare(args: argparse.Namespace) -> int:
     if args.suite:
-        tasks = _suite(args.phase, args.stage, args.inputs, args.quick)
+        tasks = _suite(args.phase, args.stage, args.guard, args.inputs, args.quick)
         ensure_inputs(args.inputs, (SEEDS[0],) if args.quick else SEEDS)
     elif args.requests:
         config = load_config(args.config) if args.config else SimConfig()
@@ -182,6 +191,7 @@ def _parser() -> argparse.ArgumentParser:
     compare.add_argument("--config", type=Path)
     compare.add_argument("--stage", default="all")
     compare.add_argument("--phase", type=int, choices=(1, 2, 3, 4), default=4)
+    compare.add_argument("--guard")
     compare.add_argument("--quick", action="store_true")
     compare.add_argument("--inputs", type=Path, default=Path("data/generated"))
     compare.add_argument("--workers", type=int, default=8)

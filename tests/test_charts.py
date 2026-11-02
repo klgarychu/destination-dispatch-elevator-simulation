@@ -123,7 +123,8 @@ def test_tst17_chart_data_holds_exactly_the_runs_in_the_report(tmp_path: Path) -
     with (out / "simulation_stats.csv").open(encoding="utf-8", newline="") as file:
         rows = list(csv.DictReader(file))
     assert read_manifest(out).runs == [row["run_id"] for row in rows]
-    assert passengers_charted(out) == {("custom", name): 2 for name in ALGORITHMS}
+    # Each algorithm ran under five seat settings on both files, so it has 5 x 2 passengers.
+    assert passengers_charted(out) == {("custom", name): 10 for name in ALL_ALGORITHMS}
 
 
 def test_tst17_a_narrower_comparison_keeps_other_runs_on_disk_but_out_of_the_charts(

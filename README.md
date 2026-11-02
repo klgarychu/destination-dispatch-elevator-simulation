@@ -27,7 +27,7 @@ The PDF sample reaches floor 51, so it needs its own config. With the default 10
 python -m elevator_sim run --requests examples/pdf_sample.csv --config configs/pdf_sample.toml --out results/sample
 ```
 
-`run` writes `positions.csv` (every car's floor at every tick), `passengers.csv` and `summary.json`, and prints the summary. It also accepts `--floors`, `--elevators`, `--capacity`, `--algorithm`, `--behaviour`, `--weight`, `--guard`, `--skip-limit`, `--wait-limit`, `--seat-hold` or `--no-seat-hold`, and `--max-ticks`. It defaults to `marginal_insertion` with `min_time` and the default guard, which is a convenience and not a judgement.
+`run` writes `positions.csv` (every car's floor at every tick), `passengers.csv` and `summary.json`, and prints the summary. It also accepts `--floors`, `--elevators`, `--capacity`, `--algorithm`, `--behaviour`, `--weight`, `--guard`, `--skip-limit`, `--wait-limit`, `--seat-hold` or `--no-seat-hold`, and `--max-ticks`. It defaults to `marginal_insertion` with `min_time` and the default guard, which is a convenience and not a judgement. A setting on the command line replaces the one in the file, and a `--behaviour` there also replaces the file's weight, unless `--weight` is given too.
 
 Simulated inputs:
 
@@ -36,7 +36,7 @@ python -m elevator_sim generate --suite --out data/generated
 python -m elevator_sim generate --pattern up_peak --rate 0.5 --ticks 1000 --seed 1 --config configs/3car-10floor-6cap.toml --out data/one.csv
 ```
 
-Compare algorithms on one file, or run the whole suite:
+Compare every algorithm and seat behaviour on one file, or run the whole suite:
 
 ```powershell
 python -m elevator_sim compare --requests data/one.csv --config configs/3car-10floor-6cap.toml --out results/one
@@ -44,7 +44,7 @@ python -m elevator_sim compare --suite --out results/phase4
 python -m elevator_sim charts --stats results/phase4 --out results/phase4/charts
 ```
 
-`compare --suite` runs two stages on `3car-10floor-6cap`, `3car-60floor-6cap` and `3car-60floor-6cap-overlap`. Stage 1 runs every algorithm under every seat behaviour with the default guard. Stage 2 runs `marginal_insertion` under `min_time` and `weighted` at 1 with each guard setting in turn, including none, at medium, heavy and overload. `--stage 1` or `--stage 2` runs one of them. A run in both stages runs once and has a row in each. `--phase 1`, `--phase 2` and `--phase 3` run the earlier suites, which had no guards. Phase 1 has eight cases named after their buildings, each at four loads set from its own measured limit, and each on the same arrivals as `3car-60floor-6cap`. Phase 2 has five express layouts of `3car-60floor-6cap` and one of `6car-60floor-6cap`, each on the same passengers as the building it changes.
+`compare --suite` runs two stages on `3car-10floor-6cap`, `3car-60floor-6cap` and `3car-60floor-6cap-overlap`. Stage 1 runs every algorithm under every seat behaviour with the default guard. Stage 2 runs `marginal_insertion` under `min_time` and `weighted` at 1 with each guard setting in turn, including none, at medium, heavy and overload. `--stage 1` or `--stage 2` runs one of them. A run in both stages runs once and has a row in each. `compare --requests` runs all six algorithms under all five seat settings on one file, with the building and guard settings of the config file. `--phase 1`, `--phase 2` and `--phase 3` run the earlier suites, which had no guards, and `--guard skip_limit` runs them with the default guard. Phase 1 has eight cases named after their buildings, each at four loads set from its own measured limit, and each on the same arrivals as `3car-60floor-6cap`. Phase 2 has five express layouts of `3car-60floor-6cap` and one of `6car-60floor-6cap`, each on the same passengers as the building it changes.
 
 To measure how much traffic a layout can carry under another algorithm, add `--algorithm` to `generate --calibrate`, with `--out` naming a separate file. The rates in `configs/load_rates.toml` are measured with `marginal_insertion` and no guard, and `--guard` measures them with one.
 

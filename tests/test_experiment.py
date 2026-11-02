@@ -66,6 +66,10 @@ def runs_executed(out: Path) -> int:
     return len(read_rows(out / "suite_log.csv"))
 
 
+# compare on one file runs every Stage 1 configuration: 6 algorithms under 5 seat settings.
+PER_FILE = 30
+
+
 def test_tst16_stats_columns_are_the_ones_in_the_spec() -> None:
     assert STATS_COLUMNS == [
         "run_id",
@@ -119,24 +123,27 @@ def test_tst16_config_id_is_readable_and_has_four_parts() -> None:
 def test_tst16_compare_gives_each_configuration_its_own_row_in_fixed_order(tmp_path: Path) -> None:
     rows = read_rows(compare(tmp_path, "out") / "simulation_stats.csv")
 
-    assert [row["algorithm"] for row in rows] == list(ALGORITHMS)
+    assert [row["algorithm"] for row in rows] == list(ALL_ALGORITHMS) * 5
     assert list(rows[0]) == STATS_COLUMNS
 
 
 def test_tst16_each_configuration_has_its_own_file(tmp_path: Path) -> None:
     out = compare(tmp_path, "out")
 
+    rows = read_rows(out / "simulation_stats.csv")
     assert sorted(path.stem for path in (out / "by_config").glob("*.csv")) == sorted(
-        f"{algorithm}__min_time__skip_limit-2-hold__none" for algorithm in ALGORITHMS
+        row["config_id"] for row in rows
     )
+    assert len(rows) == PER_FILE
     for row in read_rows(out / "simulation_stats.csv"):
         assert read_rows(out / "by_config" / f"{row['config_id']}.csv") == [row]
 
 
 def test_tst16_runs_on_the_default_guard_are_labelled_with_it(tmp_path: Path) -> None:
-    rows = read_rows(compare(tmp_path, "out") / "simulation_stats.csv")
+    every = read_rows(compare(tmp_path, "out") / "simulation_stats.csv")
+    rows = [row for row in every if row["behaviour"] != "strict"]
 
-    assert {row["unguarded"] for row in rows} == {"False"}
+    assert {row["unguarded"] for row in every} == {"False"}
     assert {row["guard"] for row in rows} == {"skip_limit"}
     assert {row["guard_value"] for row in rows} == {"2"}
     assert {row["seat_hold"] for row in rows} == {"True"}
@@ -151,9 +158,10 @@ def test_tst16_runs_with_no_guard_are_labelled_unguarded(tmp_path: Path) -> None
 
     compare_file(file, out, "--config", str(config))
 
-    rows = read_rows(out / "simulation_stats.csv")
+    every = read_rows(out / "simulation_stats.csv")
+    rows = [row for row in every if row["behaviour"] != "strict"]
     assert {row["unguarded"] for row in rows} == {"True"}
-    assert {row["guard"] for row in rows} == {"none"}
+    assert {row["guard"] for row in every} == {"none"}
     assert {row["seat_hold"] for row in rows} == {"False"}
     assert {row["flagged_passengers"] for row in rows} == {"0"}
 
@@ -221,8 +229,8 @@ def test_tst16_aggregate_stats_file_has_one_row_per_configuration_and_input_grou
 ) -> None:
     rows = read_rows(compare(tmp_path, "out") / "aggregate_stats.csv")
 
-    assert [row["algorithm"] for row in rows] == list(ALGORITHMS)
-    assert {row["behaviour"] for row in rows} == {"min_time"}
+    assert [row["algorithm"] for row in rows] == list(ALL_ALGORITHMS) * 5
+    assert {row["behaviour"] for row in rows} == {"strict", "min_time", "weighted"}
     assert rows[0]["seeds"] == "1"
     assert {f"{key}_mean" for key in AGGREGATE_KEYS} <= set(rows[0])
 
@@ -242,7 +250,7 @@ def test_compare_writes_a_timing_row_for_each_run_only_in_the_suite_log(tmp_path
 
     log = read_rows(out / "suite_log.csv")
 
-    assert len(log) == 5
+    assert len(log) == PER_FILE
     assert {row["status"] for row in log} == {"ok"}
     assert all(float(row["seconds"]) >= 0 for row in log)
     assert "seconds" not in (out / "simulation_stats.csv").read_text(encoding="utf-8")
@@ -257,7 +265,7 @@ def test_tst14_a_restarted_suite_reuses_unchanged_runs_without_running_them(
     compare(tmp_path, "out")
 
     assert {path.name: path.read_bytes() for path in (out / "runs").iterdir()} == saved
-    assert runs_executed(out) == 5
+    assert runs_executed(out) == PER_FILE
 
 
 def test_an_interrupted_suite_runs_only_what_is_missing(tmp_path: Path) -> None:
@@ -267,8 +275,8 @@ def test_an_interrupted_suite_runs_only_what_is_missing(tmp_path: Path) -> None:
 
     compare(tmp_path, "out")
 
-    assert runs_executed(out) == 7
-    assert len(read_rows(out / "simulation_stats.csv")) == 5
+    assert runs_executed(out) == PER_FILE + 2
+    assert len(read_rows(out / "simulation_stats.csv")) == PER_FILE
 
 
 def test_a_saved_run_is_not_reused_once_its_input_changes(tmp_path: Path) -> None:
@@ -280,7 +288,7 @@ def test_a_saved_run_is_not_reused_once_its_input_changes(tmp_path: Path) -> Non
     compare_file(file, tmp_path / "out")
 
     assert column(tmp_path / "out", "passengers") == {"2"}
-    assert runs_executed(tmp_path / "out") == 10
+    assert runs_executed(tmp_path / "out") == 2 * PER_FILE
 
 
 def test_a_saved_run_is_not_reused_once_its_settings_change(tmp_path: Path) -> None:
@@ -320,7 +328,7 @@ def test_a_saved_run_is_not_reused_once_the_source_changes(
     monkeypatch.setattr("elevator_sim.experiment.source_fingerprint", lambda: "different code")
     compare_file(file, tmp_path / "out")
 
-    assert runs_executed(tmp_path / "out") == 10
+    assert runs_executed(tmp_path / "out") == 2 * PER_FILE
 
 
 def test_the_source_fingerprint_covers_every_source_file(tmp_path: Path) -> None:
@@ -346,7 +354,7 @@ def test_a_saved_run_still_counts_when_the_same_input_moves_folder(tmp_path: Pat
 
     compare_file(second, tmp_path / "out")
 
-    assert runs_executed(tmp_path / "out") == 5
+    assert runs_executed(tmp_path / "out") == PER_FILE
 
 
 @pytest.mark.parametrize("contents", ["not json", '{"run_id": "made before fingerprints"}'])
@@ -358,7 +366,7 @@ def test_a_saved_run_that_cannot_be_checked_is_run_again(tmp_path: Path, content
 
     compare(tmp_path, "out")
 
-    assert runs_executed(out) == 6
+    assert runs_executed(out) == PER_FILE + 1
     assert column(out, "passengers") == {"6"}
 
 
@@ -450,7 +458,7 @@ def test_compare_says_how_many_runs_it_ran_and_how_many_it_reused(
 
     compare(tmp_path, "out")
 
-    assert "Finished 5 of 5 runs (1 run, 4 reused)" in capsys.readouterr().out
+    assert "Finished 30 of 30 runs (1 run, 29 reused)" in capsys.readouterr().out
 
 
 def test_compare_suite_stops_on_an_input_that_no_longer_matches_the_rates(
@@ -915,3 +923,83 @@ def test_tst17_compare_runs_the_stages_it_is_asked_for(
     assert main(["compare", "--suite", "--stage", stage, "--out", str(tmp_path / "out")]) == 0
 
     assert sizes == [size]
+
+
+def stage_1_settings() -> list[tuple[str, str]]:
+    return [
+        (behaviour, algorithm)
+        for behaviour in ("strict", "min_time", "weighted-0.5", "weighted-1", "weighted-2")
+        for algorithm in ALL_ALGORITHMS
+    ]
+
+
+def test_spec_10_2_compare_on_one_file_runs_every_stage_1_configuration(tmp_path: Path) -> None:
+    rows = read_rows(compare(tmp_path, "out") / "simulation_stats.csv")
+
+    assert [
+        (row["config_id"].split("__")[1], row["algorithm"]) for row in rows
+    ] == stage_1_settings()
+
+
+def test_spec_10_2_compare_on_one_file_keeps_the_files_building_and_guard(tmp_path: Path) -> None:
+    file = tmp_path / "input.csv"
+    file.write_text(SIX_ROWS, encoding="utf-8")
+    config = tmp_path / "mine.toml"
+    config.write_text(
+        '[building]\nfloors = 9\ncapacity = 2\n\n[dispatch]\nalgorithm = "eta"\n'
+        'behaviour = "weighted"\nfairness_weight = 0.5\nguard = "wait_expiry"\nwait_limit = 7\n',
+        encoding="utf-8",
+    )
+    out = tmp_path / "out"
+
+    compare_file(file, out, "--config", str(config))
+
+    rows = read_rows(out / "simulation_stats.csv")
+    assert len(rows) == 30
+    assert {row["building"] for row in rows} == {"mine"}
+    assert {(row["guard"], row["guard_value"]) for row in rows if row["behaviour"] != "strict"} == {
+        ("wait_expiry", "7")
+    }
+    assert {row["guard"] for row in rows if row["behaviour"] == "strict"} == {"none"}
+
+
+@pytest.mark.parametrize(
+    ("options", "guard"),
+    [
+        ([], "none"),
+        (["--guard", "skip_limit"], "skip_limit"),
+        (["--guard", "wait_expiry"], "wait_expiry"),
+    ],
+)
+@pytest.mark.parametrize(("phase", "size"), [("1", 6000), ("2", 4800), ("3", 7200)])
+def test_tst17_an_earlier_suite_runs_with_no_guard_unless_one_is_given(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    phase: str,
+    size: int,
+    options: list[str],
+    guard: str,
+) -> None:
+    seen: list[list[Task]] = []
+
+    def fake_run(tasks: list[Task], out: Path, workers: int) -> SuiteOutcome:
+        seen.append(tasks)
+        return SuiteOutcome([], 0)
+
+    monkeypatch.setattr("elevator_sim.cli.ensure_inputs", lambda *args: None)
+    monkeypatch.setattr("elevator_sim.cli.run_suite", fake_run)
+
+    code = main(["compare", "--suite", "--phase", phase, *options, "--out", str(tmp_path / "out")])
+
+    assert code == 0
+    assert len(seen[0]) == size
+    assert {t.config.guard_in_force for t in seen[0] if t.config.behaviour != "strict"} == {guard}
+
+
+def test_tst17_the_phase_4_suite_refuses_a_guard_because_it_sets_its_own(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code = main(["compare", "--suite", "--guard", "none", "--out", str(tmp_path / "out")])
+
+    assert code == 2
+    assert "--guard" in capsys.readouterr().err
