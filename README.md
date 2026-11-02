@@ -2,7 +2,7 @@
 
 A discrete-time Python simulation of a destination-dispatch elevator system. A passenger gives their origin and destination when they make a request, and the system immediately assigns them to one car. The project compares dispatch algorithms under simulated traffic.
 
-> **Status: work in progress.** This version has six algorithms, normal and express elevators, and three seat behaviours. Protection against long waits is not built yet, so **results so far are interim**, and all except `strict` are unguarded: every passenger is served, but a long ride can be skipped repeatedly.
+> **Status: work in progress.** This version has six algorithms, normal and express elevators, three seat behaviours, and guards against long waits. The assignment rules in the design are not built. **Results so far are interim**, until the final suite runs.
 
 The software presents statistics and charts, and never ranks results or names a winner. A person reads them and decides.
 
@@ -27,7 +27,7 @@ The PDF sample reaches floor 51, so it needs its own config. With the default 10
 python -m elevator_sim run --requests examples/pdf_sample.csv --config configs/pdf_sample.toml --out results/sample
 ```
 
-`run` writes `positions.csv` (every car's floor at every tick), `passengers.csv` and `summary.json`, and prints the summary. It also accepts `--floors`, `--elevators`, `--capacity`, `--algorithm`, `--behaviour`, `--weight` and `--max-ticks`.
+`run` writes `positions.csv` (every car's floor at every tick), `passengers.csv` and `summary.json`, and prints the summary. It also accepts `--floors`, `--elevators`, `--capacity`, `--algorithm`, `--behaviour`, `--weight`, `--guard`, `--skip-limit`, `--wait-limit`, `--seat-hold` or `--no-seat-hold`, and `--max-ticks`. It defaults to `marginal_insertion` with `min_time` and the default guard, which is a convenience and not a judgement.
 
 Simulated inputs:
 
@@ -40,13 +40,13 @@ Compare algorithms on one file, or run the whole suite:
 
 ```powershell
 python -m elevator_sim compare --requests data/one.csv --config configs/3car-10floor-6cap.toml --out results/one
-python -m elevator_sim compare --suite --out results/phase3
-python -m elevator_sim charts --stats results/phase3 --out results/phase3/charts
+python -m elevator_sim compare --suite --out results/phase4
+python -m elevator_sim charts --stats results/phase4 --out results/phase4/charts
 ```
 
-`compare --suite` runs every algorithm under every seat behaviour on `3car-10floor-6cap`, `3car-60floor-6cap` and `3car-60floor-6cap-overlap`. `--phase 1` and `--phase 2` run the earlier suites. Phase 1 has eight cases named after their buildings, each at four loads set from its own measured limit, and each on the same arrivals as `3car-60floor-6cap`. Phase 2 has five express layouts of `3car-60floor-6cap` and one of `6car-60floor-6cap`, each on the same passengers as the building it changes.
+`compare --suite` runs two stages on `3car-10floor-6cap`, `3car-60floor-6cap` and `3car-60floor-6cap-overlap`. Stage 1 runs every algorithm under every seat behaviour with the default guard. Stage 2 runs `marginal_insertion` under `min_time` and `weighted` at 1 with each guard setting in turn, including none, at medium, heavy and overload. `--stage 1` or `--stage 2` runs one of them. A run in both stages runs once and has a row in each. `--phase 1`, `--phase 2` and `--phase 3` run the earlier suites, which had no guards. Phase 1 has eight cases named after their buildings, each at four loads set from its own measured limit, and each on the same arrivals as `3car-60floor-6cap`. Phase 2 has five express layouts of `3car-60floor-6cap` and one of `6car-60floor-6cap`, each on the same passengers as the building it changes.
 
-To measure how much traffic a layout can carry under another algorithm, add `--algorithm` to `generate --calibrate`, with `--out` naming a separate file. The rates in `configs/load_rates.toml` are measured with `marginal_insertion`.
+To measure how much traffic a layout can carry under another algorithm, add `--algorithm` to `generate --calibrate`, with `--out` naming a separate file. The rates in `configs/load_rates.toml` are measured with `marginal_insertion` and no guard, and `--guard` measures them with one.
 
 Exit codes are 0 for success, 2 for invalid input or settings, and 3 for reaching `max_ticks`.
 
@@ -74,6 +74,20 @@ When a car stops and seats are short, the behaviour decides who boards.
 | `strict` | The earliest request, and a seat is kept for any earlier passenger further along the car's sweep |
 | `min_time` | The shortest ride |
 | `weighted` | The highest (1 + weight × ticks waited ÷ floors) ÷ ride length. Weight 0 matches `min_time`. `marginal_insertion` and `rush_express` also count a delay for more the longer that passenger has waited |
+
+## Guards against long waits
+
+`min_time` and `weighted` can leave a passenger behind again and again. A guard flags such a passenger, and flagged passengers board first, oldest first. `strict` needs no guard, because it boards in request order.
+
+| Guard | A passenger is flagged once they have |
+| --- | --- |
+| `skip_limit` | Been left behind S times. The default, with S = 2 |
+| `wait_expiry` | Waited W ticks, set in ticks such as `36` or in round trips such as `2rt` |
+| `none` | Never. For measurement only, and such runs are labelled unguarded |
+
+With seat hold, which is on by default, a car also keeps a seat free for a flagged passenger further along its way. Without it, a flag helps only at the passenger's own floor, which does nothing if the car arrives full. These rules are our adaptation: no published elevator method was found for them.
+
+With `skip_limit` and seat hold, a flagged passenger boards on the car's next pass in their direction, as long as no more passengers are flagged in that direction than the car has seats. There is no fixed time limit: requests can't be refused, so in overload queues still grow.
 
 ## Tests
 
