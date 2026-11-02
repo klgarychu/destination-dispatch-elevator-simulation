@@ -6,7 +6,7 @@ from bisect import bisect_left, bisect_right, insort
 
 from elevator_sim.boarding.behaviours import Behaviour
 from elevator_sim.boarding.guards import NO_GUARD, Guard
-from elevator_sim.boarding.seats import takes_reserved_seat
+from elevator_sim.boarding.seats import first_full_floor
 from elevator_sim.requests import Direction, Passenger
 
 
@@ -164,22 +164,49 @@ class Elevator(ABC):
         if not going:
             return
         # Flagged passengers board first, oldest first, then everyone else in the behaviour's order.
-        flagged = [p for p in going if self.guard.flags(p, tick)]
-        others = self.behaviour.order([p for p in going if not self.guard.flags(p, tick)], tick)
+        flags = [self.guard.flags(p, tick) for p in going]
+        flagged = [p for p, flag in zip(going, flags, strict=True) if flag]
+        others = self.behaviour.order(
+            [p for p, flag in zip(going, flags, strict=True) if not flag], tick
+        )
         keepers = self._seat_keepers(tick)
+        step = int(self.direction)
+
+        def beyond(floor: int | None, passenger: Passenger) -> bool:
+            return floor is not None and (passenger.request.dest - floor) * step > 0
+
+        # A passenger takes a kept seat exactly when they would still be aboard past the first floor
+        # where the riders and their protected passengers fill the car. With every keeper protected,
+        # that floor comes soonest, and boarding only brings it sooner.
+        all_full: int | None = None
+        all_full_riders = -1
+        # Passengers are checked oldest first, so each one's protected passengers include those of
+        # anyone checked before. The car fills no later for them than for the earlier one (M35).
+        known_full: int | None = None
         boarded = blocked = 0
         for place, passenger in enumerate([*flagged, *others]):
             if len(self.riders) == self.capacity:
                 break
+            if keepers and all_full_riders != len(self.riders):
+                all_full = first_full_floor(
+                    self.riders, keepers, self.position, self.direction, self.capacity
+                )
+                all_full_riders = len(self.riders)
             # Under strict, earlier passengers keep a seat (D11). Under seat hold, flagged ones do,
             # from anyone who would board after them.
-            if self.guard.seat_hold and place >= len(flagged):
-                protected = keepers
+            # Everyone not flagged under seat hold has every keeper protected.
+            everyone = self.guard.seat_hold and place >= len(flagged)
+            if not beyond(all_full, passenger):
+                kept = False
+            elif everyone or beyond(known_full, passenger):
+                kept = True
             else:
                 protected = [person for person in keepers if person.order < passenger.order]
-            if protected and takes_reserved_seat(
-                passenger, self.riders, protected, self.position, self.direction, self.capacity
-            ):
+                known_full = first_full_floor(
+                    self.riders, protected, self.position, self.direction, self.capacity
+                )
+                kept = beyond(known_full, passenger)
+            if kept:
                 # A blocked passenger stops boarding here, so nobody overtakes them (D28).
                 if self.behaviour.protects_earlier:
                     break
