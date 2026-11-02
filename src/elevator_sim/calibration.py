@@ -98,9 +98,9 @@ def saturation_rate(
     return rate
 
 
-def _calibrate_pair(job: tuple[str, str, SimConfig, str]) -> tuple[str, str, float]:
-    building, pattern, config, algorithm = job
-    return building, pattern, saturation_rate(building, pattern, config, algorithm)
+def _calibrate_pair(job: tuple[str, str, SimConfig, str, str]) -> tuple[str, str, float]:
+    building, pattern, config, algorithm, guard = job
+    return building, pattern, saturation_rate(building, pattern, config, algorithm, guard)
 
 
 def write_rates(path: Path, rates: dict[str, dict[str, float]]) -> None:
@@ -117,12 +117,13 @@ def calibrate(
     workers: int,
     out: Path = RATES_FILE,
     algorithm: str = "marginal_insertion",
+    guard: str = "none",
 ) -> None:
     """Measure rates for these buildings, keeping any others already in the file."""
     check_workers(workers)
     rates = load_rates(out) if out.exists() else {}
     jobs = [
-        (name, pattern, config, algorithm)
+        (name, pattern, config, algorithm, guard)
         for name, config in buildings.items()
         for pattern in PATTERNS
     ]

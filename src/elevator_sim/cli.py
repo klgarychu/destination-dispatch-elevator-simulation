@@ -78,7 +78,7 @@ def _generate(args: argparse.Namespace) -> int:
             buildings = {args.config.stem: load_config(args.config)}
         else:
             buildings = {name: building_config(name) for name in BUILDINGS}
-        calibrate(buildings, args.workers, args.out or RATES_FILE, args.algorithm)
+        calibrate(buildings, args.workers, args.out or RATES_FILE, args.algorithm, args.guard)
     elif args.suite:
         if args.out is None:
             raise ConfigError("generate --suite needs --out")
@@ -172,6 +172,8 @@ def _parser() -> argparse.ArgumentParser:
     generate.add_argument("--out", type=Path)
     generate.add_argument("--workers", type=int, default=8)
     generate.add_argument("--algorithm", default="marginal_insertion")
+    # The frozen rates were measured with no guard, so that stays the default here (M6).
+    generate.add_argument("--guard", default="none")
     generate.set_defaults(handler=_generate)
 
     compare = commands.add_parser("compare", help="run every configuration")

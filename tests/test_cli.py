@@ -374,3 +374,19 @@ def test_tst17_run_defaults_to_skip_limit_2_with_seat_hold(tmp_path: Path) -> No
         True,
     )
     assert settings["unguarded"] is False
+
+
+@pytest.mark.parametrize(
+    ("options", "guard"), [([], "none"), (["--guard", "skip_limit"], "skip_limit")]
+)
+def test_m6_generate_calibrate_runs_no_guard_unless_asked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, options: list[str], guard: str
+) -> None:
+    calls: list[tuple[object, ...]] = []
+    monkeypatch.setattr("elevator_sim.cli.calibrate", lambda *args: calls.append(args))
+    config = str(ROOT / "configs" / "3car-10floor-6cap.toml")
+    out = str(tmp_path / "rates.toml")
+
+    assert main(["generate", "--calibrate", "--config", config, "--out", out, *options]) == 0
+
+    assert calls[0][-1] == guard

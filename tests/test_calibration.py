@@ -138,3 +138,24 @@ def test_m6_calibration_runs_without_a_guard_so_the_frozen_rates_still_reproduce
         saturation_rate("3car-10floor-6cap", "uniform", SimConfig())
 
     assert seen[0].guard_in_force == "none"
+
+
+def test_m6_calibration_can_measure_with_a_guard_for_the_phase_4_check(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[SimConfig] = []
+
+    def first_run(requests: object, config: SimConfig) -> None:
+        seen.append(config)
+        raise Measured
+
+    monkeypatch.setattr("elevator_sim.calibration.simulate", first_run)
+
+    with pytest.raises(Measured):
+        saturation_rate("3car-10floor-6cap", "uniform", SimConfig(), guard="skip_limit")
+
+    assert (seen[0].guard_in_force, seen[0].skip_limit, seen[0].seat_hold) == (
+        "skip_limit",
+        2,
+        True,
+    )
