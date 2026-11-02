@@ -3,7 +3,15 @@ from pathlib import Path
 
 import pytest
 
-from elevator_sim.config import ConfigError, ExpressCar, SimConfig, load_config, parse_serves
+from elevator_sim.config import (
+    ConfigError,
+    ExpressCar,
+    SimConfig,
+    config_id,
+    load_config,
+    parse_serves,
+    settings_record,
+)
 
 
 def write_toml(path: Path, text: str) -> Path:
@@ -130,10 +138,7 @@ def test_tst12_rejects_a_missing_file(tmp_path: Path) -> None:
         ("[dispatch]\nskip_limit = 2\n", "Phase 4"),
         ('[dispatch]\nwait_limit = "2rt"\n', "Phase 4"),
         ("[dispatch]\nseat_hold = true\n", "Phase 4"),
-        ("[dispatch]\nfairness_weight = 1.0\n", "Phase 3"),
         ('[dispatch]\nassignment_rule = "none"\n', "Phase 5"),
-        ('[dispatch]\nbehaviour = "strict"\n', "Phase 3"),
-        ('[dispatch]\nbehaviour = "weighted"\n', "Phase 3"),
     ],
 )
 def test_m12_settings_from_later_phases_are_rejected(tmp_path: Path, toml: str, phase: str) -> None:
@@ -211,3 +216,60 @@ def test_tst12_express_cars_are_checked_again_when_a_setting_is_overridden() -> 
 
     with pytest.raises(ConfigError, match="car 3"):
         replace(config, elevators=2)
+
+
+def test_tst12_reads_a_behaviour_and_its_weight(tmp_path: Path) -> None:
+    toml = '[dispatch]\nbehaviour = "weighted"\nfairness_weight = 0.5\n'
+
+    config = load_config(write_toml(tmp_path, toml))
+
+    assert (config.behaviour, config.weight) == ("weighted", 0.5)
+
+
+def test_tst12_weighted_uses_a_weight_of_1_unless_told_otherwise() -> None:
+    assert SimConfig(behaviour="weighted").weight == 1.0
+
+
+def test_tst12_only_weighted_has_a_weight() -> None:
+    assert SimConfig(behaviour="min_time").weight == 0.0
+    assert SimConfig(behaviour="strict").weight == 0.0
+
+
+@pytest.mark.parametrize("behaviour", ["strict", "min_time"])
+def test_m12_a_weight_on_a_behaviour_that_ignores_it_is_refused(behaviour: str) -> None:
+    with pytest.raises(ConfigError, match="fairness_weight"):
+        SimConfig(behaviour=behaviour, fairness_weight=1.0)
+
+
+@pytest.mark.parametrize("weight", [-0.5, float("nan"), float("inf"), True, "1"])
+def test_tst12_rejects_a_bad_weight(weight: object) -> None:
+    with pytest.raises(ConfigError, match="fairness_weight"):
+        SimConfig(behaviour="weighted", fairness_weight=weight)  # type: ignore[arg-type]  # bad values
+
+
+@pytest.mark.parametrize(
+    ("behaviour", "weight", "expected"),
+    [
+        ("min_time", None, "eta__min_time__none__none"),
+        ("strict", None, "eta__strict__none__none"),
+        ("weighted", 0.5, "eta__weighted-0.5__none__none"),
+        ("weighted", 1.0, "eta__weighted-1__none__none"),
+        ("weighted", 2.0, "eta__weighted-2__none__none"),
+    ],
+)
+def test_tst16_the_config_id_names_the_behaviour_and_weight(
+    behaviour: str, weight: float | None, expected: str
+) -> None:
+    config = SimConfig(algorithm="eta", behaviour=behaviour, fairness_weight=weight)
+
+    assert config_id(config) == expected
+
+
+def test_d24_strict_is_the_one_behaviour_not_labelled_unguarded() -> None:
+    strict = settings_record(SimConfig(behaviour="strict"))
+    weighted = settings_record(SimConfig(behaviour="weighted", fairness_weight=2.0))
+    plain = settings_record(SimConfig())
+
+    assert (strict["unguarded"], strict["guard"]) == (False, "none")
+    assert (weighted["unguarded"], weighted["fairness_weight"]) == (True, 2.0)
+    assert (plain["unguarded"], plain["fairness_weight"]) == (True, None)

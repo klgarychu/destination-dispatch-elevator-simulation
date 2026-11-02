@@ -5,7 +5,7 @@ import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis.strategies import DrawFn
 
-from elevator_sim.config import ALGORITHMS, SimConfig
+from elevator_sim.config import ALGORITHMS, ALL_ALGORITHMS, SimConfig
 from elevator_sim.engine import simulate
 from elevator_sim.metrics import total_time, wait_time
 from elevator_sim.requests import Request
@@ -21,6 +21,101 @@ def overload_ramp(floors: int) -> list[Request]:
             time = request.time + 150 * step
             requests.append(Request(time, f"r{len(requests)}", request.source, request.dest))
     return requests
+
+
+SHORTAGE = [Request(0, "a", 1, 3), Request(0, "b", 1, 2)]
+
+
+@pytest.mark.parametrize(
+    ("behaviour", "weight", "expected"),
+    [
+        ("strict", None, {"a": (0, 2), "b": (4, 5)}),
+        ("min_time", None, {"a": (2, 4), "b": (0, 1)}),
+    ],
+)
+def test_tst08_the_seat_shortage_fixture(
+    behaviour: str, weight: float | None, expected: dict[str, tuple[int, int]]
+) -> None:
+    config = SimConfig(
+        floors=5, elevators=1, capacity=1, behaviour=behaviour, fairness_weight=weight
+    )
+
+    result = simulate(SHORTAGE, config)
+
+    assert {p.request.id: (wait_time(p), total_time(p)) for p in result.passengers} == expected
+
+
+# Worked by hand for WP 3.5. The car is alone, with one seat, on 5 floors. x and a tie at the lobby,
+# so x goes first and the car is back at tick 4, when a has waited 4 and b has just arrived. a then
+# scores (1 + 0.8w) / 2 and b scores 1 / 1, so a wins only if w is above 1.25.
+WEIGHTED_CASE = [Request(0, "x", 1, 3), Request(0, "a", 1, 3), Request(4, "b", 1, 2)]
+SHORT_RIDE_FIRST = {"x": (0, 2), "a": (6, 8), "b": (0, 1)}
+OLDEST_FIRST = {"x": (0, 2), "a": (4, 6), "b": (4, 5)}
+
+
+@pytest.mark.parametrize(
+    ("behaviour", "weight", "expected"),
+    [
+        ("min_time", None, SHORT_RIDE_FIRST),
+        ("weighted", 0.0, SHORT_RIDE_FIRST),
+        ("weighted", 1.0, SHORT_RIDE_FIRST),
+        ("weighted", 2.0, OLDEST_FIRST),
+        ("strict", None, OLDEST_FIRST),
+    ],
+)
+def test_wp35_a_weighted_seat_shortage_worked_by_hand(
+    behaviour: str, weight: float | None, expected: dict[str, tuple[int, int]]
+) -> None:
+    config = SimConfig(
+        floors=5, elevators=1, capacity=1, behaviour=behaviour, fairness_weight=weight
+    )
+
+    result = simulate(WEIGHTED_CASE, config)
+
+    assert {p.request.id: (wait_time(p), total_time(p)) for p in result.passengers} == expected
+
+
+def lobby_flood() -> list[Request]:
+    """One early mid-floor passenger, then a lobby flood that fills a two-seat car on every trip."""
+    rows = [(0, 5, 9)]
+    rows += [(t, 1, 8) for t in range(0, 40, 2) for _ in range(3)]
+    return requests_at(*rows)
+
+
+def test_tst13_strict_stops_a_lobby_flood_starving_a_mid_floor_passenger() -> None:
+    config = SimConfig(elevators=1, capacity=2, behaviour="strict")
+
+    held = simulate(lobby_flood(), config).passengers[0]
+
+    # The car reaches floor 5 on its first trip, four ticks in, with the seat kept free.
+    assert wait_time(held) == 4
+    assert held.times_left_behind == 0
+
+
+def test_tst13_min_time_lets_that_flood_fill_the_car_past_them() -> None:
+    config = SimConfig(elevators=1, capacity=2)
+
+    passed = simulate(lobby_flood(), config).passengers[0]
+
+    assert wait_time(passed) > 4
+    assert passed.times_left_behind >= 1
+
+
+@pytest.mark.parametrize(
+    ("behaviour", "weight"),
+    [("strict", None), ("weighted", 0.5), ("weighted", 1.0), ("weighted", 2.0)],
+)
+@pytest.mark.parametrize("algorithm", ALL_ALGORITHMS)
+def test_tst13_overload_ramp_serves_everyone_under_every_behaviour(
+    algorithm: str, behaviour: str, weight: float | None
+) -> None:
+    config = SimConfig(algorithm=algorithm, behaviour=behaviour, fairness_weight=weight)
+    requests = overload_ramp(config.floors)
+
+    result = simulate(requests, config)
+
+    assert len(result.passengers) == len(requests)
+    assert_rules_hold(result, config.capacity, config.floors)
 
 
 @pytest.mark.parametrize("algorithm", ALGORITHMS)

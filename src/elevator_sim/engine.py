@@ -56,7 +56,9 @@ def simulate(
     while True:
         while next_request < len(ordered) and ordered[next_request].time == tick:
             request = ordered[next_request]
-            view = fleet_view(fleet, tick, config.floors, config.capacity, forecaster)
+            view = fleet_view(
+                fleet, tick, config.floors, config.capacity, forecaster, config.weight
+            )
             car_id = chooser.assign(request, view)
             if car_id not in {car.car_id for car in view.eligible(request)}:
                 raise SchedulerError(f"{chooser.name} chose car {car_id} for {request.id}")

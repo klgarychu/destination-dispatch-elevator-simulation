@@ -17,6 +17,10 @@ def car(floors: int = 10, capacity: int = 6, start_floor: int = 1) -> NormalElev
     return NormalElevator(1, floors, capacity, start_floor, make_behaviour("min_time"))
 
 
+def strict_car(floors: int = 10, capacity: int = 2, start_floor: int = 1) -> NormalElevator:
+    return NormalElevator(1, floors, capacity, start_floor, make_behaviour("strict"))
+
+
 def passenger(order: int, source: int, dest: int, time: int = 0) -> Passenger:
     return Passenger(Request(time, f"p{order}", source, dest), order, car_id=1)
 
@@ -227,3 +231,139 @@ def test_tst12_a_copy_of_an_express_car_still_knows_its_floors() -> None:
 
     assert not twin.serves(3)
     assert twin.serves(5)
+
+
+def riders_of(elevator: Elevator) -> list[str]:
+    return [rider.request.id for rider in elevator.riders]
+
+
+def test_d11_a_later_passenger_leaves_a_seat_for_an_earlier_one_further_along() -> None:
+    elevator = strict_car(capacity=2)
+    held = passenger(0, 5, 9)
+    first, second = passenger(1, 1, 8), passenger(2, 1, 8)
+    for waiting in (held, first, second):
+        elevator.assign(waiting)
+
+    elevator.exchange(0)
+
+    # Two aboard to floor 8, plus the passenger at floor 5, would be three in two seats.
+    assert riders_of(elevator) == ["p1"]
+    assert second.times_left_behind == 1
+    assert held.times_left_behind == 0
+
+
+def test_d11_without_reservation_min_time_fills_the_car_past_that_passenger() -> None:
+    elevator = car(capacity=2)
+    for waiting in (passenger(0, 5, 9), passenger(1, 1, 8), passenger(2, 1, 8)):
+        elevator.assign(waiting)
+
+    elevator.exchange(0)
+
+    assert riders_of(elevator) == ["p1", "p2"]
+
+
+def test_d25_a_passenger_who_gets_off_first_takes_no_reserved_seat() -> None:
+    elevator = strict_car(capacity=1)
+    for waiting in (passenger(0, 5, 9), passenger(1, 1, 3)):
+        elevator.assign(waiting)
+
+    elevator.exchange(0)
+
+    assert riders_of(elevator) == ["p1"]
+
+
+def test_d25_getting_off_at_the_floor_the_protected_passenger_boards_is_early_enough() -> None:
+    elevator = strict_car(capacity=1)
+    for waiting in (passenger(0, 5, 9), passenger(1, 1, 5)):
+        elevator.assign(waiting)
+
+    elevator.exchange(0)
+
+    assert riders_of(elevator) == ["p1"]
+
+
+def test_d25_a_seat_stays_blocked_if_the_passenger_gets_off_after_that_floor() -> None:
+    elevator = strict_car(capacity=1)
+    for waiting in (passenger(0, 5, 9), passenger(1, 1, 6)):
+        elevator.assign(waiting)
+
+    elevator.exchange(0)
+
+    assert riders_of(elevator) == []
+
+
+def test_d28_a_blocked_passenger_stops_boarding_at_that_floor() -> None:
+    elevator = strict_car(capacity=2)
+    held, first, second = passenger(0, 5, 9), passenger(1, 1, 8), passenger(2, 1, 8)
+    # This one gets off before floor 5, so it would fit, but it can't overtake anyone blocked.
+    short = passenger(3, 1, 3)
+    for waiting in (held, first, second, short):
+        elevator.assign(waiting)
+
+    elevator.exchange(0)
+
+    assert riders_of(elevator) == ["p1"]
+    assert short.times_left_behind == 1
+
+
+def test_d11_a_later_passenger_ahead_is_not_protected() -> None:
+    elevator = strict_car(capacity=1, start_floor=5)
+    elevator.direction = Direction.UP
+    for waiting in (passenger(1, 5, 9), passenger(2, 7, 9)):
+        elevator.assign(waiting)
+
+    elevator.exchange(0)
+
+    assert riders_of(elevator) == ["p1"]
+
+
+def test_d11_an_earlier_passenger_behind_the_car_is_not_protected() -> None:
+    elevator = strict_car(capacity=1, start_floor=5)
+    elevator.direction = Direction.UP
+    for waiting in (passenger(0, 3, 9), passenger(1, 5, 9)):
+        elevator.assign(waiting)
+
+    elevator.exchange(0)
+
+    assert riders_of(elevator) == ["p1"]
+
+
+def test_d11_an_earlier_passenger_going_the_other_way_is_not_protected() -> None:
+    elevator = strict_car(capacity=1, start_floor=5)
+    elevator.direction = Direction.UP
+    for waiting in (passenger(0, 7, 2), passenger(1, 5, 9)):
+        elevator.assign(waiting)
+
+    elevator.exchange(0)
+
+    assert riders_of(elevator) == ["p1"]
+
+
+def test_tst08_strict_boards_in_request_order_at_a_floor() -> None:
+    elevator = strict_car(capacity=1)
+    for waiting in (passenger(0, 1, 9), passenger(1, 1, 2)):
+        elevator.assign(waiting)
+
+    elevator.exchange(0)
+
+    assert riders_of(elevator) == ["p0"]
+
+
+def test_tst08_weighted_scores_favour_the_longer_wait_as_the_weight_rises() -> None:
+    from elevator_sim.boarding.behaviours import make_behaviour as behaviour
+
+    old = Passenger(Request(0, "old", 1, 3), 0, car_id=1)
+    new = Passenger(Request(4, "new", 1, 2), 1, car_id=1)
+
+    # At tick 4 on 5 floors, old scores (1 + 0.8w) / 2 and new scores 1 / 1.
+    assert behaviour("weighted", 1.0, 5).order([old, new], 4)[0] is new
+    assert behaviour("weighted", 2.0, 5).order([old, new], 4)[0] is old
+
+
+def test_tst08_weighted_breaks_ties_by_request_order() -> None:
+    from elevator_sim.boarding.behaviours import make_behaviour as behaviour
+
+    first = Passenger(Request(0, "first", 1, 3), 0, car_id=1)
+    second = Passenger(Request(0, "second", 1, 3), 1, car_id=1)
+
+    assert behaviour("weighted", 1.0, 5).order([second, first], 0)[0] is first

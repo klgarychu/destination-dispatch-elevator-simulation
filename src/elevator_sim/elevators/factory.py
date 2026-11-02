@@ -8,7 +8,7 @@ from elevator_sim.elevators.normal import NormalElevator
 
 
 def build_fleet(config: SimConfig) -> list[Elevator]:
-    behaviour = make_behaviour(config.behaviour)
+    behaviour = make_behaviour(config.behaviour, config.weight, config.floors)
     express = {car.car: car.serves for car in config.express}
     fleet: list[Elevator] = []
     for number in range(1, config.elevators + 1):

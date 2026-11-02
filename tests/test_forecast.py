@@ -70,6 +70,9 @@ class ReferenceSpy(Scheduler):
         return self.inner.assign(request, view)
 
 
+SETTINGS = (("min_time", None), ("strict", None), ("weighted", 0.5), ("weighted", 2.0))
+
+
 @st.composite
 def scenarios(draw: DrawFn) -> tuple[SimConfig, list[Request]]:
     floors = draw(st.integers(2, 15))
@@ -80,6 +83,7 @@ def scenarios(draw: DrawFn) -> tuple[SimConfig, list[Request]]:
         for car in range(2, elevators + 1)
         if draw(st.booleans())
     )
+    behaviour, weight = draw(st.sampled_from(SETTINGS))
     config = SimConfig(
         floors=floors,
         elevators=elevators,
@@ -89,6 +93,8 @@ def scenarios(draw: DrawFn) -> tuple[SimConfig, list[Request]]:
             st.sampled_from(("round_robin", "eta", "marginal_insertion", "rush_express"))
         ),
         express=express,
+        behaviour=behaviour,
+        fairness_weight=weight,
     )
     requests = []
     for index in range(draw(st.integers(1, 25))):

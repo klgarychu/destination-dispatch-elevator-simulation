@@ -30,6 +30,7 @@ class FleetView:
     capacity: int
     cars: tuple[CarView, ...]
     forecaster: Forecaster
+    fairness_weight: float = 0.0
 
     def eligible(self, request: Request) -> tuple[CarView, ...]:
         return tuple(car for car in self.cars if car.can_serve(request.source, request.dest))
@@ -42,7 +43,12 @@ class FleetView:
 
 
 def fleet_view(
-    fleet: Sequence[Elevator], tick: int, floors: int, capacity: int, forecaster: Forecaster
+    fleet: Sequence[Elevator],
+    tick: int,
+    floors: int,
+    capacity: int,
+    forecaster: Forecaster,
+    fairness_weight: float = 0.0,
 ) -> FleetView:
     cars = tuple(
         CarView(
@@ -55,7 +61,7 @@ def fleet_view(
         )
         for car in fleet
     )
-    return FleetView(tick, floors, capacity, cars, forecaster)
+    return FleetView(tick, floors, capacity, cars, forecaster, fairness_weight)
 
 
 class Scheduler(ABC):

@@ -32,7 +32,15 @@ def _config_from(args: argparse.Namespace) -> SimConfig:
     config = load_config(args.config) if args.config else SimConfig()
     overrides = {
         name: value
-        for name in ("floors", "elevators", "capacity", "algorithm", "behaviour", "max_ticks")
+        for name in (
+            "floors",
+            "elevators",
+            "capacity",
+            "algorithm",
+            "behaviour",
+            "max_ticks",
+            "fairness_weight",
+        )
         if (value := getattr(args, name, None)) is not None
     }
     return replace(config, **overrides)
@@ -114,6 +122,7 @@ def _parser() -> argparse.ArgumentParser:
     run.add_argument("--capacity", type=int)
     run.add_argument("--algorithm")
     run.add_argument("--behaviour")
+    run.add_argument("--weight", dest="fairness_weight", type=float)
     run.add_argument("--max-ticks", dest="max_ticks", type=int)
     run.set_defaults(handler=_run)
 

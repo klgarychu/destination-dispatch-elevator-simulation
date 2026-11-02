@@ -8,16 +8,31 @@ onto the next sweep.
 
 from collections.abc import Iterable
 
-from elevator_sim.forecast import Forecast
+from elevator_sim.forecast import Forecast, PredictedTrip
 from elevator_sim.requests import Request
 from elevator_sim.schedulers.base import CarView, FleetView, Scheduler
 
 
-def marginal_cost(request: Request, baseline: Forecast, candidate: Forecast) -> int:
-    """The new passenger's total time, plus the delay to each passenger already on the car."""
+def marginal_cost(
+    request: Request,
+    baseline: Forecast,
+    candidate: Forecast,
+    fairness_weight: float = 0.0,
+    now: int = 0,
+    floors: int = 1,
+) -> float:
+    """The new passenger's total time, plus the delay to each passenger already on the car.
+
+    Under `weighted`, a delay counts for more the longer that passenger has waited (D14).
+    """
     assert candidate.keys() - {request.id} == baseline.keys(), "forecasts cover different people"
+
+    def weight(trip: PredictedTrip) -> float:
+        waited = min(now, trip.board_tick) - trip.request_time
+        return 1 + fairness_weight * waited / floors
+
     delays = (
-        trip.dropoff_tick - baseline[name].dropoff_tick
+        weight(baseline[name]) * (trip.dropoff_tick - baseline[name].dropoff_tick)
         for name, trip in candidate.items()
         if name != request.id
     )
@@ -29,13 +44,16 @@ class MarginalInsertion(Scheduler):
 
     def costs(
         self, request: Request, view: FleetView, cars: Iterable[CarView] | None = None
-    ) -> dict[int, int]:
+    ) -> dict[int, float]:
         """The cost of each car, from all eligible cars unless a narrower choice is given."""
         return {
             car.car_id: marginal_cost(
                 request,
                 view.baseline_forecast(car.car_id),
                 view.candidate_forecast(car.car_id, request),
+                view.fairness_weight,
+                view.now,
+                view.floors,
             )
             for car in (view.eligible(request) if cars is None else cars)
         }

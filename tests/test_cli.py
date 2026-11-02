@@ -129,33 +129,41 @@ def test_tst17_reaching_max_ticks_exits_3(
     assert "stalled" in capsys.readouterr().err
 
 
-@pytest.mark.parametrize("flag", ["--guard", "--weight"])
-def test_m12_flags_from_later_phases_exit_2(tmp_path: Path, flag: str) -> None:
+def test_m12_flags_from_later_phases_exit_2(tmp_path: Path) -> None:
     with pytest.raises(SystemExit) as caught:
-        main(["run", "--requests", SAMPLE, "--out", str(tmp_path), flag, "1"])
+        main(["run", "--requests", SAMPLE, "--out", str(tmp_path), "--guard", "1"])
 
     assert caught.value.code == 2
 
 
-def test_m12_a_behaviour_from_a_later_phase_exits_2(
+def run_sample(tmp_path: Path, *options: str) -> int:
+    arguments = ["run", "--requests", SAMPLE, "--config", SAMPLE_CONFIG, "--out", str(tmp_path)]
+    return main([*arguments, *options])
+
+
+def saved_settings(folder: Path) -> dict[str, object]:
+    summary = json.loads((folder / "summary.json").read_text(encoding="utf-8"))
+    settings: dict[str, object] = summary["config"]
+    return settings
+
+
+def test_tst17_run_accepts_a_behaviour(tmp_path: Path) -> None:
+    assert run_sample(tmp_path, "--behaviour", "strict") == 0
+
+    assert saved_settings(tmp_path)["behaviour"] == "strict"
+
+
+def test_tst17_run_accepts_a_weight_for_weighted(tmp_path: Path) -> None:
+    assert run_sample(tmp_path, "--behaviour", "weighted", "--weight", "0.5") == 0
+
+    assert saved_settings(tmp_path)["fairness_weight"] == 0.5
+
+
+def test_m12_a_weight_that_would_do_nothing_exits_2(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    code = main(
-        [
-            "run",
-            "--requests",
-            SAMPLE,
-            "--config",
-            SAMPLE_CONFIG,
-            "--out",
-            str(tmp_path),
-            "--behaviour",
-            "strict",
-        ]
-    )
-
-    assert code == 2
-    assert "Phase 3" in capsys.readouterr().err
+    assert run_sample(tmp_path, "--weight", "0.5") == 2
+    assert "fairness_weight" in capsys.readouterr().err
 
 
 def test_tst17_generate_writes_one_custom_file(tmp_path: Path) -> None:

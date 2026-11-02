@@ -1,5 +1,6 @@
 """Simulation settings, TOML loading and validation."""
 
+import math
 import re
 import tomllib
 from dataclasses import dataclass
@@ -10,22 +11,21 @@ from typing import Any
 # The fixed display order (G4). Phase 1 compared the first five, so its suite stays on those.
 ALGORITHMS = ("round_robin", "nearest_car", "zone_based", "eta", "marginal_insertion")
 ALL_ALGORITHMS = (*ALGORITHMS, "rush_express")
-BEHAVIOURS = ("min_time",)
+BEHAVIOURS = ("strict", "min_time", "weighted")
+DEFAULT_WEIGHT = 1.0
 
 # Settings the design defines but this phase doesn't build. Accepting them silently would let a
 # reader believe a guard was active when it wasn't (M12).
 _LATER_SETTINGS = {
-    "fairness_weight": 3,
     "guard": 4,
     "skip_limit": 4,
     "wait_limit": 4,
     "seat_hold": 4,
     "assignment_rule": 5,
 }
-_LATER_BEHAVIOURS = {"strict": 3, "weighted": 3}
 
 _BUILDING_KEYS = {"floors", "elevators", "capacity", "start_floor"}
-_DISPATCH_KEYS = {"algorithm", "behaviour"}
+_DISPATCH_KEYS = {"algorithm", "behaviour", "fairness_weight"}
 _EXPRESS_KEYS = {"car", "serves"}
 _INTEGER_KEYS = ("floors", "elevators", "capacity", "start_floor")
 
@@ -87,6 +87,14 @@ class SimConfig:
     behaviour: str = "min_time"
     max_ticks: int | None = None
     express: tuple[ExpressCar, ...] = ()
+    fairness_weight: float | None = None
+
+    @property
+    def weight(self) -> float:
+        """The fairness weight in force, which is 0 for every behaviour but `weighted`."""
+        if self.behaviour != "weighted":
+            return 0.0
+        return DEFAULT_WEIGHT if self.fairness_weight is None else self.fairness_weight
 
     def __post_init__(self) -> None:
         for name in _INTEGER_KEYS:
@@ -106,14 +114,24 @@ class SimConfig:
         if self.algorithm not in ALL_ALGORITHMS:
             names = ", ".join(ALL_ALGORITHMS)
             raise ConfigError(f"unknown algorithm {self.algorithm!r}: use {names}")
-        if self.behaviour in _LATER_BEHAVIOURS:
-            phase = _LATER_BEHAVIOURS[self.behaviour]
-            raise ConfigError(f"behaviour {self.behaviour!r} arrives in Phase {phase}")
         if self.behaviour not in BEHAVIOURS:
             raise ConfigError(f"unknown behaviour {self.behaviour!r}: use {', '.join(BEHAVIOURS)}")
         if self.max_ticks is not None and self.max_ticks < 1:
             raise ConfigError(f"max_ticks must be at least 1, not {self.max_ticks}")
+        self._check_weight()
         self._check_express()
+
+    def _check_weight(self) -> None:
+        weight = self.fairness_weight
+        if weight is None:
+            return
+        # Accepting a weight that does nothing would let a reader believe it had an effect (M12).
+        if self.behaviour != "weighted":
+            raise ConfigError(f"fairness_weight applies only to weighted, not {self.behaviour}")
+        if isinstance(weight, bool) or not isinstance(weight, int | float):
+            raise ConfigError(f"fairness_weight must be a number, not {weight!r}")
+        if not 0 <= weight < math.inf:
+            raise ConfigError(f"fairness_weight must be 0 or more and finite, not {weight!r}")
 
     def _check_express(self) -> None:
         cars = [car.car for car in self.express]
@@ -139,7 +157,10 @@ class SimConfig:
 
 def config_id(config: SimConfig) -> str:
     """A readable id with four stable parts: algorithm, behaviour, guard and assignment rule."""
-    return f"{config.algorithm}__{config.behaviour}__none__none"
+    behaviour = config.behaviour
+    if behaviour == "weighted":
+        behaviour = f"weighted-{config.weight:g}"
+    return f"{config.algorithm}__{behaviour}__none__none"
 
 
 def settings_record(config: SimConfig) -> dict[str, str | float | bool | None]:
@@ -147,13 +168,14 @@ def settings_record(config: SimConfig) -> dict[str, str | float | bool | None]:
     return {
         "algorithm": config.algorithm,
         "behaviour": config.behaviour,
-        "fairness_weight": None,
+        "fairness_weight": config.weight if config.behaviour == "weighted" else None,
         "guard": "none",
         "guard_value": None,
         "seat_hold": False,
         "assignment_rule": "none",
         "rule_value": None,
-        "unguarded": True,
+        # Strict meets "no passenger waits forever" by itself, so it needs no guard (D24).
+        "unguarded": config.behaviour != "strict",
     }
 
 

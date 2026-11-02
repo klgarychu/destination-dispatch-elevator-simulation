@@ -350,6 +350,43 @@ def test_car_at_builds_cars_with_the_shared_behaviour() -> None:
     assert car_at(1, 1).behaviour is make_behaviour("min_time")
 
 
+def test_tst11_weighted_delays_count_for_more_the_longer_a_passenger_has_waited() -> None:
+    rider = PredictedTrip(0, 3, 10)
+    waiting = PredictedTrip(2, 8, 20)
+    baseline = {"rider": rider, "waiting": waiting}
+    candidate = {
+        "rider": PredictedTrip(0, 3, 12),
+        "waiting": PredictedTrip(2, 8, 25),
+        "new": PredictedTrip(5, 7, 12),
+    }
+
+    # At tick 6 on 10 floors the rider waited 3 and the other has waited 4 so far, so with weight 1
+    # their delays of 2 and 5 count 1.3 and 1.4 times. The new passenger's own 7 ticks count once.
+    cost = marginal_cost(
+        request(5, 10, time=5), baseline, candidate, fairness_weight=1.0, now=6, floors=10
+    )
+
+    assert cost == pytest.approx(7 + 2 * 1.3 + 5 * 1.4)
+
+
+def test_tst11_a_weight_of_zero_leaves_the_cost_as_it_was() -> None:
+    baseline = {"a": PredictedTrip(0, 1, 10)}
+    candidate = {"a": PredictedTrip(0, 1, 13), "new": PredictedTrip(5, 7, 12)}
+
+    assert marginal_cost(request(5, 10, time=5), baseline, candidate) == 10
+
+
+def test_tst11_a_weighted_run_can_choose_another_car() -> None:
+    # Car 1 has a long-waiting passenger whose delay counts for more once weighted.
+    rows = [Request(t, f"p{t}", 1 + t % 9, 10 if t % 9 < 8 else 2) for t in range(40)]
+    config = SimConfig(elevators=2, capacity=2)
+
+    plain = simulate(rows, config)
+    weighted = simulate(rows, replace(config, behaviour="weighted", fairness_weight=2.0))
+
+    assert [p.car_id for p in plain.passengers] != [p.car_id for p in weighted.passengers]
+
+
 def test_tst11_round_robin_skips_a_car_that_cannot_serve_the_trip() -> None:
     view = view_of(car_at(1, 1), express_at(2, 1, (1, 8, 9, 10)), car_at(3, 1))
     scheduler = RoundRobin()

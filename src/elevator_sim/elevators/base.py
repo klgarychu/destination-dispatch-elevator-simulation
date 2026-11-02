@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 from bisect import bisect_left, bisect_right, insort
 
 from elevator_sim.boarding.behaviours import Behaviour
+from elevator_sim.boarding.seats import takes_reserved_seat
 from elevator_sim.requests import Direction, Passenger
 
 
@@ -152,15 +153,32 @@ class Elevator(ABC):
         going = [p for p in queue if p.request.direction == self.direction]
         if not going:
             return
-        seats = self.capacity - len(self.riders)
-        ordered = self.behaviour.order(going)
-        boarding = ordered[:seats]
-        for passenger in boarding:
+        for passenger in self.behaviour.order(going, tick):
+            if len(self.riders) == self.capacity:
+                break
+            # A blocked passenger stops boarding here, so nobody overtakes them (D28).
+            if self.behaviour.protects_earlier and self._needs_seat_kept(passenger):
+                break
             passenger.board_tick = tick
             self.riders.append(passenger)
-        for passenger in ordered[seats:]:
-            passenger.times_left_behind += 1
+        for passenger in going:
+            if passenger.board_tick is None:
+                passenger.times_left_behind += 1
         queue[:] = [p for p in queue if p.board_tick is None]
         if not queue:
             del self._waiting[self.position]
             self._waiting_floors.remove(self.position)
+
+    def _needs_seat_kept(self, passenger: Passenger) -> bool:
+        """Whether boarding this passenger would take a seat from an earlier one further along."""
+        step = int(self.direction)
+        earlier_ahead = [
+            person
+            for floor in self._waiting_floors
+            if (floor - self.position) * step > 0
+            for person in self._waiting[floor]
+            if person.request.direction == self.direction and person.order < passenger.order
+        ]
+        return takes_reserved_seat(
+            passenger, self.riders, earlier_ahead, self.position, self.direction, self.capacity
+        )
