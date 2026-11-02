@@ -273,3 +273,49 @@ def test_d24_strict_is_the_one_behaviour_not_labelled_unguarded() -> None:
     assert (strict["unguarded"], strict["guard"]) == (False, "none")
     assert (weighted["unguarded"], weighted["fairness_weight"]) == (True, 2.0)
     assert (plain["unguarded"], plain["fairness_weight"]) == (True, None)
+
+
+@pytest.mark.parametrize(
+    ("settings", "named"),
+    [
+        ({"guard": "max_skips"}, "unknown guard"),
+        ({"guard": 2}, "guard"),
+        ({"skip_limit": 0}, "skip_limit"),
+        ({"skip_limit": True}, "skip_limit"),
+        ({"skip_limit": 1.5}, "skip_limit"),
+        ({"wait_limit": 0}, "wait_limit"),
+        ({"wait_limit": "0rt"}, "wait_limit"),
+        ({"wait_limit": "1.5rt"}, "wait_limit"),
+        ({"wait_limit": "36"}, "wait_limit"),
+        ({"wait_limit": True}, "wait_limit"),
+        ({"seat_hold": 1}, "seat_hold"),
+    ],
+)
+def test_tst12_rejects_bad_guard_settings(settings: dict[str, object], named: str) -> None:
+    with pytest.raises(ConfigError, match=named):
+        SimConfig(**settings)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    ("floors", "limit", "ticks"), [(10, "1rt", 18), (60, "2rt", 236), (60, 36, 36)]
+)
+def test_d19_a_wait_limit_is_in_ticks_or_round_trips_of_the_building(
+    floors: int, limit: int | str, ticks: int
+) -> None:
+    assert SimConfig(floors=floors, wait_limit=limit).wait_limit_ticks == ticks
+
+
+@pytest.mark.parametrize(
+    ("behaviour", "guard", "in_force"),
+    [
+        ("min_time", "skip_limit", "skip_limit"),
+        ("weighted", "wait_expiry", "wait_expiry"),
+        ("min_time", "none", "none"),
+        ("strict", "skip_limit", "none"),
+        ("strict", "wait_expiry", "none"),
+    ],
+)
+def test_d24_strict_runs_no_guard_whatever_the_setting(
+    behaviour: str, guard: str, in_force: str
+) -> None:
+    assert SimConfig(behaviour=behaviour, guard=guard).guard_in_force == in_force

@@ -5,6 +5,7 @@ exchanges passengers first, then moves one floor, so it reaches floor f in abs(f
 """
 
 from elevator_sim.boarding.behaviours import make_behaviour
+from elevator_sim.boarding.guards import NO_GUARD, Guard
 from elevator_sim.config import ExpressCar, SimConfig
 from elevator_sim.elevators.base import Elevator
 from elevator_sim.elevators.express import ExpressElevator
@@ -367,3 +368,64 @@ def test_tst08_weighted_breaks_ties_by_request_order() -> None:
     second = Passenger(Request(0, "second", 1, 3), 1, car_id=1)
 
     assert behaviour("weighted", 1.0, 5).order([second, first], 0)[0] is first
+
+
+def guarded_car(
+    guard: Guard, capacity: int = 2, start_floor: int = 1, behaviour: str = "min_time"
+) -> NormalElevator:
+    return NormalElevator(1, 10, capacity, start_floor, make_behaviour(behaviour), guard)
+
+
+def left_behind(order: int, source: int, dest: int, times: int, time: int = 0) -> Passenger:
+    waiting = passenger(order, source, dest, time)
+    waiting.times_left_behind = times
+    return waiting
+
+
+def test_tst13_flagged_passengers_board_first_and_oldest_first() -> None:
+    elevator = guarded_car(Guard("skip_limit", 2), capacity=2)
+    # Both long rides have been left behind twice, so they go before the short ride.
+    for waiting in (left_behind(0, 1, 9, 2), left_behind(1, 1, 7, 3), passenger(2, 1, 2)):
+        elevator.assign(waiting)
+
+    elevator.exchange(0)
+
+    assert riders_of(elevator) == ["p0", "p1"]
+
+
+def test_tst13_passengers_not_flagged_keep_the_behaviours_order() -> None:
+    elevator = guarded_car(Guard("skip_limit", 2), capacity=2)
+    for waiting in (passenger(0, 1, 9), left_behind(1, 1, 5, 2), passenger(2, 1, 2)):
+        elevator.assign(waiting)
+
+    elevator.exchange(0)
+
+    # The flagged passenger first, then the shortest ride.
+    assert riders_of(elevator) == ["p1", "p2"]
+
+
+def test_tst13_a_wait_limit_flags_a_passenger_once_their_wait_reaches_it() -> None:
+    long_ride, short_ride = passenger(0, 1, 9, time=0), passenger(1, 1, 2, time=3)
+    before, at_limit = (
+        guarded_car(Guard("wait_expiry", 5), 1),
+        guarded_car(Guard("wait_expiry", 5), 1),
+    )
+    for elevator in (before, at_limit):
+        for waiting in (long_ride, short_ride):
+            elevator.assign(Passenger(waiting.request, waiting.order, 1))
+
+    before.exchange(4)
+    at_limit.exchange(5)
+
+    assert riders_of(before) == ["p1"]
+    assert riders_of(at_limit) == ["p0"]
+
+
+def test_tst13_with_no_guard_nobody_is_flagged() -> None:
+    elevator = guarded_car(NO_GUARD, capacity=1)
+    for waiting in (left_behind(0, 1, 9, 50), passenger(1, 1, 2)):
+        elevator.assign(waiting)
+
+    elevator.exchange(1000)
+
+    assert riders_of(elevator) == ["p1"]

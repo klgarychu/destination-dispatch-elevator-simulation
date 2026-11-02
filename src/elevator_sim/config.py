@@ -13,6 +13,7 @@ ALGORITHMS = ("round_robin", "nearest_car", "zone_based", "eta", "marginal_inser
 ALL_ALGORITHMS = (*ALGORITHMS, "rush_express")
 BEHAVIOURS = ("strict", "min_time", "weighted")
 DEFAULT_WEIGHT = 1.0
+GUARDS = ("none", "skip_limit", "wait_expiry")
 
 # Settings the design defines but this phase doesn't build. Accepting them silently would let a
 # reader believe a guard was active when it wasn't (M12).
@@ -88,6 +89,11 @@ class SimConfig:
     max_ticks: int | None = None
     express: tuple[ExpressCar, ...] = ()
     fairness_weight: float | None = None
+    guard: str = "none"
+    skip_limit: int = 2
+    # Ticks, or whole round trips written as "2rt".
+    wait_limit: int | str = "2rt"
+    seat_hold: bool = True
 
     @property
     def weight(self) -> float:
@@ -95,6 +101,22 @@ class SimConfig:
         if self.behaviour != "weighted":
             return 0.0
         return DEFAULT_WEIGHT if self.fairness_weight is None else self.fairness_weight
+
+    @property
+    def guard_in_force(self) -> str:
+        """The guard that runs. `strict` meets "no passenger waits forever" by itself (D24)."""
+        return "none" if self.behaviour == "strict" else self.guard
+
+    @property
+    def round_trip(self) -> int:
+        """Ticks to travel from floor 1 to the top and back."""
+        return 2 * (self.floors - 1)
+
+    @property
+    def wait_limit_ticks(self) -> int:
+        if isinstance(self.wait_limit, str):
+            return int(self.wait_limit.removesuffix("rt")) * self.round_trip
+        return self.wait_limit
 
     def __post_init__(self) -> None:
         for name in _INTEGER_KEYS:
@@ -119,6 +141,7 @@ class SimConfig:
         if self.max_ticks is not None and self.max_ticks < 1:
             raise ConfigError(f"max_ticks must be at least 1, not {self.max_ticks}")
         self._check_weight()
+        self._check_guard()
         self._check_express()
 
     def _check_weight(self) -> None:
@@ -132,6 +155,24 @@ class SimConfig:
             raise ConfigError(f"fairness_weight must be a number, not {weight!r}")
         if not 0 <= weight < math.inf:
             raise ConfigError(f"fairness_weight must be 0 or more and finite, not {weight!r}")
+
+    def _check_guard(self) -> None:
+        _require_text("guard", self.guard)
+        if self.guard not in GUARDS:
+            raise ConfigError(f"unknown guard {self.guard!r}: use {', '.join(GUARDS)}")
+        _require_whole_number("skip_limit", self.skip_limit)
+        if self.skip_limit < 1:
+            raise ConfigError(f"skip_limit must be at least 1, not {self.skip_limit}")
+        if not isinstance(self.seat_hold, bool):
+            raise ConfigError(f"seat_hold must be true or false, not {self.seat_hold!r}")
+        limit = self.wait_limit
+        if isinstance(limit, str):
+            if re.fullmatch(r"[1-9]\d*rt", limit) is None:
+                raise ConfigError(
+                    f"wait_limit must be ticks or round trips such as '2rt', not {limit!r}"
+                )
+        elif not is_whole_number(limit) or limit < 1:
+            raise ConfigError(f"wait_limit must be at least 1 tick, not {limit!r}")
 
     def _check_express(self) -> None:
         cars = [car.car for car in self.express]

@@ -5,13 +5,20 @@ from abc import ABC, abstractmethod
 from bisect import bisect_left, bisect_right, insort
 
 from elevator_sim.boarding.behaviours import Behaviour
+from elevator_sim.boarding.guards import NO_GUARD, Guard
 from elevator_sim.boarding.seats import takes_reserved_seat
 from elevator_sim.requests import Direction, Passenger
 
 
 class Elevator(ABC):
     def __init__(
-        self, car_id: int, floors: int, capacity: int, start_floor: int, behaviour: Behaviour
+        self,
+        car_id: int,
+        floors: int,
+        capacity: int,
+        start_floor: int,
+        behaviour: Behaviour,
+        guard: Guard = NO_GUARD,
     ) -> None:
         self.car_id = car_id
         self.floors = floors
@@ -19,6 +26,7 @@ class Elevator(ABC):
         self.position = start_floor
         self.direction = Direction.IDLE
         self.behaviour = behaviour
+        self.guard = guard
         self.riders: list[Passenger] = []
         # Waiting passengers by floor, in request order. Queues can hold hundreds of passengers
         # in overload, and every stop needs them by floor, so avoid scanning the whole queue.
@@ -153,7 +161,10 @@ class Elevator(ABC):
         going = [p for p in queue if p.request.direction == self.direction]
         if not going:
             return
-        for passenger in self.behaviour.order(going, tick):
+        # Flagged passengers board first, oldest first, then everyone else in the behaviour's order.
+        flagged = [p for p in going if self.guard.flags(p, tick)]
+        others = [p for p in going if not self.guard.flags(p, tick)]
+        for passenger in [*flagged, *self.behaviour.order(others, tick)]:
             if len(self.riders) == self.capacity:
                 break
             # A blocked passenger stops boarding here, so nobody overtakes them (D28).

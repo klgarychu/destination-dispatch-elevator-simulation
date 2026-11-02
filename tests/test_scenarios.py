@@ -1,4 +1,6 @@
-"""TST-13: the starvation scenarios that apply before guards exist."""
+"""TST-13: the starvation scenarios, with and without guards."""
+
+from dataclasses import replace
 
 import hypothesis.strategies as st
 import pytest
@@ -165,12 +167,34 @@ def test_tst13_with_seats_to_spare_wait_and_total_stay_inside_the_bounds(
         assert total_time(passenger) < 3 * span
 
 
-def test_tst13_without_a_guard_a_long_ride_can_be_skipped_repeatedly() -> None:
-    # One car with one seat. A long ride waits at floor 1 while short rides keep arriving, and
-    # min_time gives each seat to the shortest ride. This is the gap guards close in Phase 4.
-    rows = [(0, 1, 10)] + [(tick, 1, 2) for tick in range(0, 40, 2)]
-    config = SimConfig(elevators=1, capacity=1, algorithm="round_robin")
+def same_floor_flood() -> list[Request]:
+    """A long ride at floor 1, and a short ride arriving there every 2 ticks until tick 38."""
+    return requests_at((0, 1, 10), *[(tick, 1, 2) for tick in range(0, 40, 2)])
 
-    result = simulate(requests_at(*rows), config)
 
-    assert result.passengers[0].times_left_behind >= 5
+# Worked by hand. One car with one seat on 10 floors, back at floor 1 every 2 ticks, so a short ride
+# is always waiting there. min_time seats the short ride each time. Unguarded, the long ride boards
+# at tick 40, after the last short ride, having been left behind at ticks 0, 2, ... 38.
+@pytest.mark.parametrize(
+    ("guard", "limits", "wait", "left_behind"),
+    [
+        ("none", {}, 40, 20),
+        # Left behind at ticks 0 and 2, so flagged at tick 4, and boards first.
+        ("skip_limit", {"skip_limit": 2}, 4, 2),
+        ("skip_limit", {"skip_limit": 1}, 2, 1),
+        # Waited 4 at tick 4, below the limit of 5, and 6 at tick 6.
+        ("wait_expiry", {"wait_limit": 5}, 6, 3),
+        # One round trip on 10 floors is 18 ticks.
+        ("wait_expiry", {"wait_limit": "1rt"}, 18, 9),
+    ],
+)
+def test_tst13_same_floor_starvation_ends_at_the_guards_limit(
+    guard: str, limits: dict[str, int | str], wait: int, left_behind: int
+) -> None:
+    config = replace(
+        SimConfig(elevators=1, capacity=1, algorithm="round_robin", guard=guard), **limits
+    )
+
+    long_ride = simulate(same_floor_flood(), config).passengers[0]
+
+    assert (wait_time(long_ride), long_ride.times_left_behind) == (wait, left_behind)
