@@ -132,7 +132,7 @@ def _finish(
             [],
             [],
             color=COLOURS[name],
-            marker=MARKERS[name],
+            marker=None if settings else MARKERS[name],
             markersize=6,
             linewidth=2,
             label=name,
