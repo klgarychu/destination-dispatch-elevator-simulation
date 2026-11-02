@@ -429,3 +429,95 @@ def test_tst13_with_no_guard_nobody_is_flagged() -> None:
     elevator.exchange(1000)
 
     assert riders_of(elevator) == ["p1"]
+
+
+HOLD = Guard("skip_limit", 2, seat_hold=True)
+
+
+def test_tst13_seat_hold_keeps_a_seat_for_a_flagged_passenger_further_along() -> None:
+    elevator = guarded_car(HOLD, capacity=2)
+    for waiting in (left_behind(0, 5, 9, 2), passenger(1, 1, 8), passenger(2, 1, 8)):
+        elevator.assign(waiting)
+
+    elevator.exchange(0)
+
+    assert riders_of(elevator) == ["p1"]
+
+
+def test_tst13_without_seat_hold_a_flag_only_helps_at_the_passengers_own_floor() -> None:
+    elevator = guarded_car(Guard("skip_limit", 2, seat_hold=False), capacity=2)
+    for waiting in (left_behind(0, 5, 9, 2), passenger(1, 1, 8), passenger(2, 1, 8)):
+        elevator.assign(waiting)
+
+    elevator.exchange(0)
+
+    assert riders_of(elevator) == ["p1", "p2"]
+
+
+def test_tst13_a_passenger_ahead_who_is_not_flagged_keeps_no_seat() -> None:
+    elevator = guarded_car(HOLD, capacity=1)
+    for waiting in (passenger(0, 1, 9), left_behind(1, 5, 9, 1)):
+        elevator.assign(waiting)
+
+    elevator.exchange(0)
+
+    assert riders_of(elevator) == ["p0"]
+
+
+def test_d25_under_seat_hold_a_passenger_who_gets_off_first_takes_no_kept_seat() -> None:
+    elevator = guarded_car(HOLD, capacity=1)
+    for waiting in (left_behind(0, 5, 9, 2), passenger(1, 1, 5)):
+        elevator.assign(waiting)
+
+    elevator.exchange(0)
+
+    assert riders_of(elevator) == ["p1"]
+
+
+def test_tst13_a_flagged_passenger_keeps_a_seat_even_from_someone_older_who_is_not() -> None:
+    elevator = guarded_car(HOLD, capacity=1)
+    for waiting in (passenger(0, 1, 9), left_behind(5, 5, 9, 2)):
+        elevator.assign(waiting)
+
+    elevator.exchange(0)
+
+    assert riders_of(elevator) == []
+
+
+def test_tst13_between_flagged_passengers_the_older_one_keeps_the_seat() -> None:
+    older_here, younger_here = guarded_car(HOLD, capacity=1), guarded_car(HOLD, capacity=1)
+    for waiting in (left_behind(1, 1, 9, 2), left_behind(5, 5, 9, 2)):
+        older_here.assign(waiting)
+    for waiting in (left_behind(1, 5, 9, 2), left_behind(5, 1, 9, 2)):
+        younger_here.assign(waiting)
+
+    older_here.exchange(0)
+    younger_here.exchange(0)
+
+    assert riders_of(older_here) == ["p1"]
+    assert riders_of(younger_here) == []
+
+
+def test_tst13_under_seat_hold_a_blocked_passenger_does_not_stop_boarding() -> None:
+    elevator = guarded_car(HOLD, capacity=1)
+    # p5 is flagged here, but p1 further along is flagged and older. p6 gets off before floor 5.
+    for waiting in (left_behind(1, 5, 9, 2), left_behind(5, 1, 9, 2), passenger(6, 1, 3)):
+        elevator.assign(waiting)
+
+    elevator.exchange(0)
+
+    assert riders_of(elevator) == ["p6"]
+
+
+def test_d24_a_strict_fleet_ignores_its_guard_settings() -> None:
+    config = SimConfig(
+        elevators=1, capacity=1, behaviour="strict", guard="skip_limit", skip_limit=1
+    )
+    elevator = build_fleet(config)[0]
+    # With the guard, p1 would be flagged and keep the seat. Under strict, p0 is earlier.
+    for waiting in (passenger(0, 1, 9), left_behind(1, 5, 9, 1)):
+        elevator.assign(waiting)
+
+    elevator.exchange(0)
+
+    assert riders_of(elevator) == ["p0"]

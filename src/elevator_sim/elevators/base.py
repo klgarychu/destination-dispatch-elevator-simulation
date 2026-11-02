@@ -163,13 +163,24 @@ class Elevator(ABC):
             return
         # Flagged passengers board first, oldest first, then everyone else in the behaviour's order.
         flagged = [p for p in going if self.guard.flags(p, tick)]
-        others = [p for p in going if not self.guard.flags(p, tick)]
-        for passenger in [*flagged, *self.behaviour.order(others, tick)]:
+        others = self.behaviour.order([p for p in going if not self.guard.flags(p, tick)], tick)
+        keepers = self._seat_keepers(tick)
+        for place, passenger in enumerate([*flagged, *others]):
             if len(self.riders) == self.capacity:
                 break
-            # A blocked passenger stops boarding here, so nobody overtakes them (D28).
-            if self.behaviour.protects_earlier and self._needs_seat_kept(passenger):
-                break
+            # Under strict, earlier passengers keep a seat (D11). Under seat hold, flagged ones do,
+            # from anyone who would board after them.
+            if self.guard.seat_hold and place >= len(flagged):
+                protected = keepers
+            else:
+                protected = [person for person in keepers if person.order < passenger.order]
+            if protected and takes_reserved_seat(
+                passenger, self.riders, protected, self.position, self.direction, self.capacity
+            ):
+                # A blocked passenger stops boarding here, so nobody overtakes them (D28).
+                if self.behaviour.protects_earlier:
+                    break
+                continue
             passenger.board_tick = tick
             self.riders.append(passenger)
         for passenger in going:
@@ -180,16 +191,18 @@ class Elevator(ABC):
             del self._waiting[self.position]
             self._waiting_floors.remove(self.position)
 
-    def _needs_seat_kept(self, passenger: Passenger) -> bool:
-        """Whether boarding this passenger would take a seat from an earlier one further along."""
+    def _seat_keepers(self, tick: int) -> list[Passenger]:
+        """Passengers further along this sweep who may keep a seat from someone boarding here."""
+        if not (self.behaviour.protects_earlier or self.guard.seat_hold):
+            return []
         step = int(self.direction)
-        earlier_ahead = [
+        ahead = [
             person
             for floor in self._waiting_floors
             if (floor - self.position) * step > 0
             for person in self._waiting[floor]
-            if person.request.direction == self.direction and person.order < passenger.order
+            if person.request.direction == self.direction
         ]
-        return takes_reserved_seat(
-            passenger, self.riders, earlier_ahead, self.position, self.direction, self.capacity
-        )
+        if self.behaviour.protects_earlier:
+            return ahead
+        return [person for person in ahead if self.guard.flags(person, tick)]

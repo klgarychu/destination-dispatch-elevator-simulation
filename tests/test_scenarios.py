@@ -95,12 +95,37 @@ def test_tst13_strict_stops_a_lobby_flood_starving_a_mid_floor_passenger() -> No
 
 
 def test_tst13_min_time_lets_that_flood_fill_the_car_past_them() -> None:
-    config = SimConfig(elevators=1, capacity=2)
+    config = SimConfig(elevators=1, capacity=2, guard="none")
 
     passed = simulate(lobby_flood(), config).passengers[0]
 
     assert wait_time(passed) > 4
     assert passed.times_left_behind >= 1
+
+
+# Worked by hand. The car leaves floor 1 at ticks 0, 14, 28 ... with two lobby passengers, passes
+# floor 5 four ticks later, and comes back down past it at ticks 10, 24 ... going the wrong way.
+# Unguarded, the 60 lobby passengers fill it two at a time until trip 29, at tick 406, so the
+# floor 5 passenger is left behind on all 30 trips, and boards at tick 416, when the empty car
+# comes back down and turns for them. With S = 2 they are flagged after trip 1, at tick 18. With
+# seat hold, trip 2 boards one lobby passenger at tick 28 and keeps the other seat, so they board
+# at tick 32. Without it, a flag only helps at their own floor, and the car still arrives full.
+@pytest.mark.parametrize(
+    ("guard", "seat_hold", "wait", "left_behind"),
+    [
+        ("none", True, 416, 30),
+        ("skip_limit", True, 32, 2),
+        ("skip_limit", False, 416, 30),
+    ],
+)
+def test_tst13_seat_hold_keeps_a_seat_through_a_lobby_flood(
+    guard: str, seat_hold: bool, wait: int, left_behind: int
+) -> None:
+    config = SimConfig(elevators=1, capacity=2, guard=guard, skip_limit=2, seat_hold=seat_hold)
+
+    held = simulate(lobby_flood(), config).passengers[0]
+
+    assert (wait_time(held), held.times_left_behind) == (wait, left_behind)
 
 
 @pytest.mark.parametrize(

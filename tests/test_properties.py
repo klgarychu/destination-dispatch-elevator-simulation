@@ -145,3 +145,70 @@ def test_tst13_strict_keeps_a_wait_within_the_bound_on_one_car(
         assert passenger.board_tick is not None
         wait = passenger.board_tick - passenger.request.time
         assert wait <= (len(earlier) // config.capacity + 2) * round_trip
+
+
+@st.composite
+def guarded_single_cars(draw: DrawFn, guard: str) -> tuple[SimConfig, list[Request]]:
+    floors = draw(st.integers(3, 12))
+    behaviour, weight = draw(st.sampled_from((("min_time", None), ("weighted", 1.0))))
+    config = SimConfig(
+        floors=floors,
+        elevators=1,
+        capacity=draw(st.integers(1, 4)),
+        behaviour=behaviour,
+        fairness_weight=weight,
+        guard=guard,
+        skip_limit=draw(st.integers(1, 3)),
+        wait_limit=draw(st.integers(1, 30)),
+        seat_hold=True,
+    )
+    requests = []
+    for index in range(draw(st.integers(1, 25))):
+        source = draw(st.integers(1, floors))
+        dest = draw(st.integers(1, floors).filter(lambda floor, s=source: floor != s))
+        requests.append(Request(draw(st.integers(0, 60)), f"p{index}", source, dest))
+    return config, requests
+
+
+def flagged_fit_in_one_car(result: SimulationResult, flagged: list[bool], capacity: int) -> bool:
+    """Whether no direction ever has more flagged passengers than the car has seats."""
+    for direction in (-1, 1):
+        count = sum(
+            is_flagged
+            for passenger, is_flagged in zip(result.passengers, flagged, strict=True)
+            if passenger.request.direction == direction
+        )
+        if count > capacity:
+            return False
+    return True
+
+
+@settings(max_examples=300, deadline=None, suppress_health_check=[HealthCheck.too_slow])
+@given(guarded_single_cars("skip_limit"))
+def test_tst13_with_seat_hold_a_flagged_passenger_boards_on_the_next_pass(
+    scenario: tuple[SimConfig, list[Request]],
+) -> None:
+    config, requests = scenario
+
+    result = simulate(requests, config)
+
+    flagged = [p.times_left_behind >= config.skip_limit for p in result.passengers]
+    if flagged_fit_in_one_car(result, flagged, config.capacity):
+        assert all(p.times_left_behind <= config.skip_limit for p in result.passengers)
+
+
+@settings(max_examples=300, deadline=None, suppress_health_check=[HealthCheck.too_slow])
+@given(guarded_single_cars("wait_expiry"))
+def test_tst13_with_seat_hold_an_expired_wait_ends_within_the_next_full_pass(
+    scenario: tuple[SimConfig, list[Request]],
+) -> None:
+    config, requests = scenario
+    limit = config.wait_limit_ticks
+
+    result = simulate(requests, config)
+
+    waits = [p.board_tick - p.request.time for p in result.passengers if p.board_tick is not None]
+    if flagged_fit_in_one_car(result, [wait >= limit for wait in waits], config.capacity):
+        # A passenger flagged mid-sweep can miss that sweep, and the next one starts within
+        # 2(n - 1) ticks and reaches them within n - 1 more.
+        assert all(wait <= limit + 3 * (config.floors - 1) for wait in waits)
