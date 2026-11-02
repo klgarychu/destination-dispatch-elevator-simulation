@@ -200,7 +200,7 @@ def test_tst17_charts_stop_on_a_saved_run_they_cannot_read(
 ) -> None:
     out = tmp_path / "out"
     compare(write_input(tmp_path, "input.csv", SIX_ROWS), out)
-    (out / "runs" / "eta__min_time__none__none__input.json").unlink()
+    (out / "runs" / "eta__min_time__skip_limit-2-hold__none__input.json").unlink()
 
     assert draw(out, tmp_path / "charts") == 2
 

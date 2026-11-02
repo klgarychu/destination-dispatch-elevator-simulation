@@ -153,7 +153,7 @@ def sample_inputs() -> set[tuple[str, str, str, int]]:
 
 
 def suite_tasks(inputs: Path, quick: bool = False) -> list[Task]:
-    """Stage 1 as far as it is built: every algorithm on every input, in fixed order."""
+    """Phase 1: every algorithm on every input, in fixed order, with no guard as it was run."""
     samples = sample_inputs()
     seeds = (SEEDS[0],) if quick else SEEDS
     tasks = []
@@ -163,7 +163,7 @@ def suite_tasks(inputs: Path, quick: bool = False) -> list[Task]:
         # Cases can share a fixed-load file, so those run ids name the case as well.
         label = f"{spec.building}__{FIXED}_{path.stem}" if spec.fixed else path.stem
         for algorithm in ALGORITHMS:
-            config = replace(building, algorithm=algorithm)
+            config = replace(building, algorithm=algorithm, guard="none")
             tasks.append(
                 Task(
                     f"{config_id(config)}__{label}",
@@ -192,12 +192,13 @@ def _case_tasks(
     own_limit: Sequence[str],
     shared: Mapping[str, str],
     seat_settings: Sequence[tuple[str, float | None]],
+    guard: str,
 ) -> list[Task]:
     """Every algorithm and seat setting on each case's own limit, then on shared passengers."""
     seeds = (SEEDS[0],) if quick else SEEDS
 
     def configs(case: str) -> list[SimConfig]:
-        building = building_config(case)
+        building = replace(building_config(case), guard=guard)
         return [
             replace(building, algorithm=algorithm, behaviour=behaviour, fairness_weight=weight)
             for behaviour, weight in seat_settings
@@ -243,13 +244,14 @@ def _case_tasks(
 
 
 def express_tasks(inputs: Path, quick: bool = False) -> list[Task]:
-    """Phase 2 (M30): the express cases, all on `min_time`."""
-    return _case_tasks(inputs, quick, EXPRESS_OWN_LIMIT, EXPRESS_BUILDINGS, (("min_time", None),))
+    """Phase 2 (M30): the express cases, all on `min_time` with no guard, as they were run."""
+    only_min_time = (("min_time", None),)
+    return _case_tasks(inputs, quick, EXPRESS_OWN_LIMIT, EXPRESS_BUILDINGS, only_min_time, "none")
 
 
 def behaviour_tasks(inputs: Path, quick: bool = False) -> list[Task]:
-    """Phase 3 (M32): every seat setting on every algorithm."""
-    return _case_tasks(inputs, quick, BEHAVIOUR_OWN_LIMIT, BEHAVIOUR_SHARED, SEAT_SETTINGS)
+    """Phase 3 (M32): every seat setting on every algorithm, with no guard, as they were run."""
+    return _case_tasks(inputs, quick, BEHAVIOUR_OWN_LIMIT, BEHAVIOUR_SHARED, SEAT_SETTINGS, "none")
 
 
 def file_tasks(requests: Path, building: SimConfig, building_name: str) -> list[Task]:

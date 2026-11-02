@@ -117,3 +117,24 @@ def test_a_rate_is_refused_when_heavy_load_does_not_keep_up() -> None:
 def test_a_rate_is_refused_when_overload_is_not_past_capacity() -> None:
     with pytest.raises(ConfigError, match="overload"):
         check_load_levels(2.0, lambda rate: True)
+
+
+class Measured(Exception):
+    """Stops a calibration at its first run, once the settings it runs are known."""
+
+
+def test_m6_calibration_runs_without_a_guard_so_the_frozen_rates_still_reproduce(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[SimConfig] = []
+
+    def first_run(requests: object, config: SimConfig) -> None:
+        seen.append(config)
+        raise Measured
+
+    monkeypatch.setattr("elevator_sim.calibration.simulate", first_run)
+
+    with pytest.raises(Measured):
+        saturation_rate("3car-10floor-6cap", "uniform", SimConfig())
+
+    assert seen[0].guard_in_force == "none"

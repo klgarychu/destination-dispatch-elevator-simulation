@@ -21,7 +21,7 @@ PDF_SAMPLE = [
     Request(0, "passenger2", 1, 37),
     Request(10, "passenger3", 20, 1),
 ]
-ONE_CAR = SimConfig(floors=60, elevators=1, capacity=6, algorithm="round_robin")
+ONE_CAR = SimConfig(floors=60, elevators=1, capacity=6, algorithm="round_robin", guard="none")
 
 
 def read_rows(path: Path) -> list[list[str]]:

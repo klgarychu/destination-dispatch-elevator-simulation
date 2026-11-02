@@ -91,7 +91,7 @@ class SimConfig:
     max_ticks: int | None = None
     express: tuple[ExpressCar, ...] = ()
     fairness_weight: float | None = None
-    guard: str = "none"
+    guard: str = "skip_limit"
     skip_limit: int = 2
     # Ticks, or whole round trips written as "2rt".
     wait_limit: int | str = "2rt"

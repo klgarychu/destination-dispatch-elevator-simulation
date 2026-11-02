@@ -18,19 +18,25 @@ CASES = {
     "3car-10floor-6cap": (SimConfig(floors=10, elevators=3, capacity=6), 2.5),
     "6car-60floor-6cap": (SimConfig(floors=60, elevators=6, capacity=6), 1.5),
 }
+# Unguarded, as Phases 1 to 3 ran, and the default guard from Phase 4 (D18).
+GUARDS = ("none", "skip_limit")
 
 
-def golden_path(building: str, algorithm: str) -> Path:
-    return GOLDEN_DIR / f"{building}__{algorithm}.csv"
+def golden_path(building: str, algorithm: str, guard: str = "none") -> Path:
+    suffix = "" if guard == "none" else f"__{guard}"
+    return GOLDEN_DIR / f"{building}__{algorithm}{suffix}.csv"
 
 
-def render_case(building: str, algorithm: str, scratch: Path) -> tuple[SimulationResult, bytes]:
+def render_case(
+    building: str, algorithm: str, scratch: Path, guard: str = "none"
+) -> tuple[SimulationResult, bytes]:
     building_config, rate = CASES[building]
     config = SimConfig(
         floors=building_config.floors,
         elevators=building_config.elevators,
         capacity=building_config.capacity,
         algorithm=algorithm,
+        guard=guard,
     )
     requests = generate_requests("lunch", rate, 120, 2024, config.floors)
     result = simulate(requests, config)
@@ -44,8 +50,9 @@ def main() -> None:
     with tempfile.TemporaryDirectory() as scratch:
         for building in CASES:
             for algorithm in ALGORITHMS:
-                _, text = render_case(building, algorithm, Path(scratch))
-                golden_path(building, algorithm).write_bytes(text)
+                for guard in GUARDS:
+                    _, text = render_case(building, algorithm, Path(scratch), guard)
+                    golden_path(building, algorithm, guard).write_bytes(text)
 
 
 if __name__ == "__main__":

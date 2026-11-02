@@ -71,15 +71,19 @@ def check_load_levels(rate: float, passes: Callable[[float], bool]) -> None:
 
 
 def saturation_rate(
-    building: str, pattern: str, config: SimConfig, algorithm: str = "marginal_insertion"
+    building: str,
+    pattern: str,
+    config: SimConfig,
+    algorithm: str = "marginal_insertion",
+    guard: str = "none",
 ) -> float:
-    """A measured saturation rate, without a guard, so inputs stay fixed (M6).
+    """A measured saturation rate. Without a guard by default, so the frozen rates reproduce (M6).
 
     A saturated fleet is one whose backlog keeps growing. The size of the backlog at one tick
     can't show that, because it includes everyone simply in transit (G15). This is a working
     measure from short runs on three seeds, not a proof of long-run capacity (M23).
     """
-    target = replace(config, algorithm=algorithm, behaviour="min_time")
+    target = replace(config, algorithm=algorithm, behaviour="min_time", guard=guard)
 
     def passes(rate: float) -> bool:
         growth = []

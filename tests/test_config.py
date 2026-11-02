@@ -375,3 +375,15 @@ def test_d24_strict_runs_no_guard_whatever_the_setting(
     behaviour: str, guard: str, in_force: str
 ) -> None:
     assert SimConfig(behaviour=behaviour, guard=guard).guard_in_force == in_force
+
+
+def test_d18_the_default_guard_is_skip_limit_2_with_seat_hold() -> None:
+    config = SimConfig()
+
+    assert (config.guard_in_force, config.skip_limit, config.seat_hold) == ("skip_limit", 2, True)
+    assert config_id(config) == "marginal_insertion__min_time__skip_limit-2-hold__none"
+    assert settings_record(config)["unguarded"] is False
+
+
+def test_d18_no_guard_stays_available_and_is_labelled_unguarded() -> None:
+    assert settings_record(SimConfig(guard="none"))["unguarded"] is True

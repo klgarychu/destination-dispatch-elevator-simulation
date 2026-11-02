@@ -1,6 +1,7 @@
 """TST-16: separate statistics per configuration, correct aggregation, and repeatable files."""
 
 import csv
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 
@@ -103,7 +104,8 @@ def test_tst16_stats_columns_are_the_ones_in_the_spec() -> None:
 
 
 def test_tst16_config_id_is_readable_and_has_four_parts() -> None:
-    assert config_id(SimConfig(algorithm="eta")) == "eta__min_time__none__none"
+    assert config_id(SimConfig(algorithm="eta")) == "eta__min_time__skip_limit-2-hold__none"
+    assert config_id(SimConfig(algorithm="eta", guard="none")) == "eta__min_time__none__none"
 
 
 def test_tst16_compare_gives_each_configuration_its_own_row_in_fixed_order(tmp_path: Path) -> None:
@@ -117,15 +119,31 @@ def test_tst16_each_configuration_has_its_own_file(tmp_path: Path) -> None:
     out = compare(tmp_path, "out")
 
     assert sorted(path.stem for path in (out / "by_config").glob("*.csv")) == sorted(
-        f"{algorithm}__min_time__none__none" for algorithm in ALGORITHMS
+        f"{algorithm}__min_time__skip_limit-2-hold__none" for algorithm in ALGORITHMS
     )
     for row in read_rows(out / "simulation_stats.csv"):
         assert read_rows(out / "by_config" / f"{row['config_id']}.csv") == [row]
 
 
-def test_tst16_all_runs_are_labelled_unguarded_with_guard_columns_off(tmp_path: Path) -> None:
+def test_tst16_runs_on_the_default_guard_are_labelled_with_it(tmp_path: Path) -> None:
     rows = read_rows(compare(tmp_path, "out") / "simulation_stats.csv")
 
+    assert {row["unguarded"] for row in rows} == {"False"}
+    assert {row["guard"] for row in rows} == {"skip_limit"}
+    assert {row["guard_value"] for row in rows} == {"2"}
+    assert {row["seat_hold"] for row in rows} == {"True"}
+
+
+def test_tst16_runs_with_no_guard_are_labelled_unguarded(tmp_path: Path) -> None:
+    file = tmp_path / "input.csv"
+    file.write_text(SIX_ROWS, encoding="utf-8")
+    config = tmp_path / "none.toml"
+    config.write_text('[dispatch]\nguard = "none"\n', encoding="utf-8")
+    out = tmp_path / "out"
+
+    compare_file(file, out, "--config", str(config))
+
+    rows = read_rows(out / "simulation_stats.csv")
     assert {row["unguarded"] for row in rows} == {"True"}
     assert {row["guard"] for row in rows} == {"none"}
     assert {row["seat_hold"] for row in rows} == {"False"}
@@ -233,8 +251,8 @@ def test_tst14_a_restarted_suite_reuses_unchanged_runs_without_running_them(
 
 def test_an_interrupted_suite_runs_only_what_is_missing(tmp_path: Path) -> None:
     out = compare(tmp_path, "out")
-    (out / "runs" / "eta__min_time__none__none__input.json").unlink()
-    (out / "runs" / "round_robin__min_time__none__none__input.json").unlink()
+    (out / "runs" / "eta__min_time__skip_limit-2-hold__none__input.json").unlink()
+    (out / "runs" / "round_robin__min_time__skip_limit-2-hold__none__input.json").unlink()
 
     compare(tmp_path, "out")
 
@@ -323,7 +341,9 @@ def test_a_saved_run_still_counts_when_the_same_input_moves_folder(tmp_path: Pat
 @pytest.mark.parametrize("contents", ["not json", '{"run_id": "made before fingerprints"}'])
 def test_a_saved_run_that_cannot_be_checked_is_run_again(tmp_path: Path, contents: str) -> None:
     out = compare(tmp_path, "out")
-    (out / "runs" / "eta__min_time__none__none__input.json").write_text(contents, encoding="utf-8")
+    (out / "runs" / "eta__min_time__skip_limit-2-hold__none__input.json").write_text(
+        contents, encoding="utf-8"
+    )
 
     compare(tmp_path, "out")
 
@@ -343,7 +363,7 @@ def test_a_stale_run_that_then_stalls_leaves_no_old_result(tmp_path: Path) -> No
 
     assert outcome.stalled == ["run"]
     assert not (out / "runs" / "run.json").exists()
-    assert not (out / "samples" / "input" / "eta__min_time__none__none").exists()
+    assert not (out / "samples" / "input" / "eta__min_time__skip_limit-2-hold__none").exists()
     assert read_rows(out / "simulation_stats.csv") == []
 
 
@@ -363,7 +383,7 @@ def test_every_output_leaves_out_a_configuration_with_no_finished_runs(tmp_path:
     assert column(out, "algorithm") == {"eta"}
     assert read_manifest(out).runs == ["eta"]
     assert [path.name for path in (out / "by_config").iterdir()] == [
-        "eta__min_time__none__none.csv"
+        "eta__min_time__skip_limit-2-hold__none.csv"
     ]
 
 
@@ -414,7 +434,7 @@ def test_compare_says_how_many_runs_it_ran_and_how_many_it_reused(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     out = compare(tmp_path, "out")
-    (out / "runs" / "eta__min_time__none__none__input.json").unlink()
+    (out / "runs" / "eta__min_time__skip_limit-2-hold__none__input.json").unlink()
     capsys.readouterr()
 
     compare(tmp_path, "out")
@@ -452,7 +472,7 @@ def test_tst17_a_suite_matrix_has_every_configuration_on_every_input() -> None:
 def test_tst17_buildings_are_applied_to_their_own_inputs() -> None:
     for task in suite_tasks(Path("data/generated")):
         assert task.config == replace(
-            building_config(task.building), algorithm=task.config.algorithm
+            building_config(task.building), algorithm=task.config.algorithm, guard="none"
         )
         if task.load_basis == "own_limit":
             assert task.input_path.name.startswith(f"{task.building}_")
@@ -491,7 +511,7 @@ def test_m28_a_fixed_load_run_keeps_the_logs_of_the_run_that_shares_its_file(
 
     run_tasks([own, fixed], tmp_path, workers=1)
 
-    assert (tmp_path / "samples" / "input" / "eta__min_time__none__none").exists()
+    assert (tmp_path / "samples" / "input" / "eta__min_time__skip_limit-2-hold__none").exists()
 
 
 def test_m28_the_statistics_keep_the_two_load_bases_apart(tmp_path: Path) -> None:
@@ -605,8 +625,8 @@ def test_m30_a_fixed_load_sample_keeps_its_logs_apart_from_the_run_that_shares_i
 
     run_tasks([own, fixed], tmp_path, workers=1)
 
-    assert (tmp_path / "samples" / "input" / "eta__min_time__none__none").exists()
-    assert (tmp_path / "samples" / "b__input" / "eta__min_time__none__none").exists()
+    assert (tmp_path / "samples" / "input" / "eta__min_time__skip_limit-2-hold__none").exists()
+    assert (tmp_path / "samples" / "b__input" / "eta__min_time__skip_limit-2-hold__none").exists()
 
 
 def test_m32_the_behaviour_suite_has_every_setting_on_every_algorithm() -> None:
@@ -721,7 +741,7 @@ def test_sample_runs_keep_their_full_logs(tmp_path: Path) -> None:
 
     run_tasks([task], tmp_path, workers=1)
 
-    logs = tmp_path / "samples" / "input" / "eta__min_time__none__none"
+    logs = tmp_path / "samples" / "input" / "eta__min_time__skip_limit-2-hold__none"
     assert sorted(path.name for path in logs.iterdir()) == [
         "passengers.csv",
         "positions.csv",
@@ -745,3 +765,13 @@ def test_m12_stage_2_is_rejected_until_it_is_built(
 def test_compare_needs_a_suite_or_a_requests_file(capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["compare", "--out", "unused"]) == 2
     assert "--requests" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("suite", [suite_tasks, express_tasks, behaviour_tasks])
+def test_m8_the_phase_1_to_3_suites_keep_no_guard_so_their_results_stand(
+    suite: Callable[[Path], list[Task]],
+) -> None:
+    tasks = suite(Path("data/generated"))
+
+    assert {task.config.guard_in_force for task in tasks} == {"none"}
+    assert all(task.run_id.split("__")[2] == "none" for task in tasks)

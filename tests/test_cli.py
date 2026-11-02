@@ -362,3 +362,15 @@ def test_tst17_module_entry_point_runs_with_no_traceback_on_bad_input(tmp_path: 
 
     assert done.returncode == 2
     assert "Traceback" not in done.stderr
+
+
+def test_tst17_run_defaults_to_skip_limit_2_with_seat_hold(tmp_path: Path) -> None:
+    assert run_sample(tmp_path) == 0
+
+    settings = saved_settings(tmp_path)
+    assert (settings["guard"], settings["guard_value"], settings["seat_hold"]) == (
+        "skip_limit",
+        2,
+        True,
+    )
+    assert settings["unguarded"] is False
