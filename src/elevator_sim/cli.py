@@ -10,10 +10,13 @@ from elevator_sim.calibration import calibrate
 from elevator_sim.config import ConfigError, SimConfig, load_config
 from elevator_sim.engine import SimulationStalledError, simulate
 from elevator_sim.experiment import (
+    Task,
     behaviour_tasks,
     express_tasks,
     file_tasks,
     run_suite,
+    stage_1_tasks,
+    stage_2_tasks,
     suite_tasks,
 )
 from elevator_sim.output import format_summary, summary_data, write_run
@@ -90,13 +93,22 @@ def _generate(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _suite(phase: int, stage: str, inputs: Path, quick: bool) -> list[Task]:
+    """The suite of a phase. Phases 1 to 3 had only Stage 1, so they keep their own suites."""
+    if stage not in ("all", "1", "2"):
+        raise ConfigError(f"unknown stage {stage!r}: use all, 1 or 2")
+    if phase < 4:
+        if stage == "2":
+            raise ConfigError(f"Stage 2 runs only in the Phase 4 suite, not Phase {phase}")
+        return {1: suite_tasks, 2: express_tasks, 3: behaviour_tasks}[phase](inputs, quick)
+    tasks = stage_1_tasks(inputs, quick) if stage in ("all", "1") else []
+    return tasks + (stage_2_tasks(inputs, quick) if stage in ("all", "2") else [])
+
+
 def _compare(args: argparse.Namespace) -> int:
     if args.suite:
-        if args.stage not in ("all", "1"):
-            raise ConfigError("Stage 2 arrives in Phase 4")
+        tasks = _suite(args.phase, args.stage, args.inputs, args.quick)
         ensure_inputs(args.inputs, (SEEDS[0],) if args.quick else SEEDS)
-        suites = {1: suite_tasks, 2: express_tasks, 3: behaviour_tasks}
-        tasks = suites[args.phase](args.inputs, args.quick)
     elif args.requests:
         config = load_config(args.config) if args.config else SimConfig()
         building = args.config.stem if args.config else "custom"
@@ -104,9 +116,12 @@ def _compare(args: argparse.Namespace) -> int:
     else:
         raise ConfigError("compare needs --suite, or --requests with a file")
     outcome = run_suite(tasks, args.out, args.workers)
-    finished = len(tasks) - len(outcome.stalled)
+    # A run in both stages runs once and is written twice (M11).
+    runs = len({task.run_id for task in tasks})
+    finished = runs - len(outcome.stalled)
     counts = f"{finished - outcome.reused} run, {outcome.reused} reused"
-    print(f"Finished {finished} of {len(tasks)} runs ({counts}). Results are in {args.out}")
+    rows = f", written as {len(tasks)} rows" if len(tasks) != runs else ""
+    print(f"Finished {finished} of {runs} runs ({counts}{rows}). Results are in {args.out}")
     if outcome.stalled:
         print(f"error: {len(outcome.stalled)} runs reached max_ticks", file=sys.stderr)
         return EXIT_STALLED
@@ -164,7 +179,7 @@ def _parser() -> argparse.ArgumentParser:
     compare.add_argument("--requests", type=Path)
     compare.add_argument("--config", type=Path)
     compare.add_argument("--stage", default="all")
-    compare.add_argument("--phase", type=int, choices=(1, 2, 3), default=3)
+    compare.add_argument("--phase", type=int, choices=(1, 2, 3, 4), default=4)
     compare.add_argument("--quick", action="store_true")
     compare.add_argument("--inputs", type=Path, default=Path("data/generated"))
     compare.add_argument("--workers", type=int, default=8)

@@ -22,6 +22,10 @@ def row(
         "load_basis": "own_limit",
         "fairness_weight": None,
         "seed": seed,
+        "stage": 1,
+        "guard": "none",
+        "guard_value": None,
+        "seat_hold": False,
         "unguarded": unguarded,
         "passengers": 100,
         "total_mean": total_mean,
@@ -178,3 +182,74 @@ def test_report_is_lf_and_ends_with_a_newline(tmp_path: Path) -> None:
 
     assert report.endswith("\n")
     assert "\r" not in report
+
+
+def guarded(
+    guard: str, value: int | str | None, hold: bool, total_mean: float
+) -> dict[str, object]:
+    config = SimConfig(
+        algorithm="marginal_insertion",
+        guard=guard,
+        seat_hold=hold,
+        **({"skip_limit": value} if guard == "skip_limit" else {}),  # type: ignore[arg-type]
+        **({"wait_limit": value} if guard == "wait_expiry" else {}),  # type: ignore[arg-type]
+    )
+    return {
+        **row("marginal_insertion", total_mean),
+        "config_id": config_id(config),
+        "stage": 2,
+        "guard": guard,
+        "guard_value": value,
+        "seat_hold": hold and guard != "none",
+        "unguarded": guard == "none",
+    }
+
+
+STAGE_2_ORDER = [
+    ("none", None, True),
+    ("skip_limit", 1, True),
+    ("skip_limit", 2, True),
+    ("skip_limit", 3, True),
+    ("wait_expiry", "1rt", True),
+    ("wait_expiry", "2rt", True),
+    ("wait_expiry", "3rt", True),
+    ("skip_limit", 2, False),
+    ("wait_expiry", "2rt", False),
+]
+
+
+def test_tst16_stage_2_has_its_own_sections_after_stage_1() -> None:
+    report = render_report([guarded("skip_limit", 2, True, 5.0), row("eta", 2.0)])
+
+    stage_1 = report.index("## 3car-10floor-6cap, lunch, heavy\n")
+    assert stage_1 < report.index("## Stage 2: 3car-10floor-6cap, lunch, heavy\n")
+
+
+def test_tst18_stage_2_lists_guard_settings_in_the_spec_order_whatever_the_values() -> None:
+    rows = [
+        guarded(guard, value, hold, total_mean=100.0 - index)
+        for index, (guard, value, hold) in reversed(list(enumerate(STAGE_2_ORDER)))
+    ]
+
+    report = render_report(rows)
+
+    labels = [
+        "`none`",
+        "`skip_limit 1, hold`",
+        "`skip_limit 2, hold`",
+        "`skip_limit 3, hold`",
+        "`wait_expiry 1rt, hold`",
+        "`wait_expiry 2rt, hold`",
+        "`wait_expiry 3rt, hold`",
+        "`skip_limit 2, no hold`",
+        "`wait_expiry 2rt, no hold`",
+    ]
+    positions = [report.index(f"| {label} |") for label in labels]
+    assert positions == sorted(positions)
+
+
+def test_tst16_every_table_names_the_guard_of_each_row() -> None:
+    report = render_report([row("eta", 2.0), guarded("skip_limit", 2, True, 5.0)])
+
+    assert "| Algorithm | Behaviour | Guard | Seeds |" in report
+    assert "| `eta` | `min_time` | `none` | 1 |" in report

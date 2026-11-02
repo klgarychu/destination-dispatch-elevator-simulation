@@ -8,7 +8,13 @@ from pathlib import Path
 import pytest
 
 from elevator_sim.cli import main
-from elevator_sim.config import ALGORITHMS, ALL_ALGORITHMS, SimConfig, config_id
+from elevator_sim.config import (
+    ALGORITHMS,
+    ALL_ALGORITHMS,
+    SimConfig,
+    config_id,
+    settings_record,
+)
 from elevator_sim.experiment import (
     AGGREGATE_KEYS,
     STATS_COLUMNS,
@@ -21,6 +27,8 @@ from elevator_sim.experiment import (
     run_tasks,
     sample_inputs,
     source_fingerprint,
+    stage_1_tasks,
+    stage_2_tasks,
     suite_tasks,
 )
 from elevator_sim.output import read_manifest
@@ -154,6 +162,7 @@ def test_tst16_aggregate_gives_mean_min_and_max_across_seeds() -> None:
     rows: list[dict[str, object]] = [
         {
             "config_id": "x",
+            "stage": 1,
             "algorithm": "eta",
             "behaviour": "min_time",
             "building": "b",
@@ -167,6 +176,7 @@ def test_tst16_aggregate_gives_mean_min_and_max_across_seeds() -> None:
         },
         {
             "config_id": "x",
+            "stage": 1,
             "algorithm": "eta",
             "behaviour": "min_time",
             "building": "b",
@@ -180,6 +190,7 @@ def test_tst16_aggregate_gives_mean_min_and_max_across_seeds() -> None:
         },
         {
             "config_id": "x",
+            "stage": 1,
             "algorithm": "eta",
             "behaviour": "min_time",
             "building": "b",
@@ -688,7 +699,7 @@ def test_m32_compare_defaults_to_the_behaviour_suite(
     monkeypatch.setattr("elevator_sim.cli.run_suite", fake_run)
     out = str(tmp_path / "out")
 
-    assert main(["compare", "--suite", "--out", out]) == 0
+    assert main(["compare", "--suite", "--phase", "3", "--out", out]) == 0
     assert main(["compare", "--suite", "--phase", "2", "--out", out]) == 0
 
     assert sizes == [7200, 4800]
@@ -753,13 +764,13 @@ def test_runs_outside_the_sample_keep_no_logs(tmp_path: Path) -> None:
     assert not (compare(tmp_path, "out") / "samples").exists()
 
 
-def test_m12_stage_2_is_rejected_until_it_is_built(
+def test_tst17_stage_2_runs_only_in_the_phase_4_suite(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    code = main(["compare", "--suite", "--stage", "2", "--out", str(tmp_path)])
+    code = main(["compare", "--suite", "--phase", "3", "--stage", "2", "--out", str(tmp_path)])
 
     assert code == 2
-    assert "Phase 4" in capsys.readouterr().err
+    assert "Stage 2" in capsys.readouterr().err
 
 
 def test_compare_needs_a_suite_or_a_requests_file(capsys: pytest.CaptureFixture[str]) -> None:
@@ -775,3 +786,132 @@ def test_m8_the_phase_1_to_3_suites_keep_no_guard_so_their_results_stand(
 
     assert {task.config.guard_in_force for task in tasks} == {"none"}
     assert all(task.run_id.split("__")[2] == "none" for task in tasks)
+
+
+INPUTS = Path("data/generated")
+
+
+def test_g7_stage_1_runs_every_seat_setting_with_the_default_guard() -> None:
+    tasks = stage_1_tasks(INPUTS)
+
+    assert len(tasks) == 7200
+    assert {task.stage for task in tasks} == {1}
+    assert {task.run_id.split("__")[2] for task in tasks if task.config.behaviour != "strict"} == {
+        "skip_limit-2-hold"
+    }
+    assert {task.run_id.split("__")[2] for task in tasks if task.config.behaviour == "strict"} == {
+        "none"
+    }
+
+
+def test_g16_stage_2_runs_nine_guard_settings_on_two_behaviours() -> None:
+    tasks = stage_2_tasks(INPUTS)
+
+    assert len(tasks) == 3240
+    assert {task.stage for task in tasks} == {2}
+    assert {task.config.algorithm for task in tasks} == {"marginal_insertion"}
+    assert {task.load for task in tasks} == {"medium", "heavy", "overload"}
+    assert {task.building for task in tasks} == {
+        "3car-10floor-6cap",
+        "3car-60floor-6cap",
+        "3car-60floor-6cap-overlap",
+    }
+    one_input = [
+        t.run_id for t in tasks if t.input_path.name == "3car-60floor-6cap_lunch_heavy_s1.csv"
+    ]
+    assert [run_id.split("__")[1] + " " + run_id.split("__")[2] for run_id in one_input[:9]] == [
+        "min_time none",
+        "min_time skip_limit-1-hold",
+        "min_time skip_limit-2-hold",
+        "min_time skip_limit-3-hold",
+        "min_time wait_expiry-1rt-hold",
+        "min_time wait_expiry-2rt-hold",
+        "min_time wait_expiry-3rt-hold",
+        "min_time skip_limit-2-nohold",
+        "min_time wait_expiry-2rt-nohold",
+    ]
+    assert len({run_id.split("__")[1] for run_id in one_input}) == 2
+
+
+def test_m11_the_runs_in_both_stages_are_the_default_guard_on_marginal_insertion() -> None:
+    stage_1 = {task.run_id: task for task in stage_1_tasks(INPUTS)}
+    shared = [task for task in stage_2_tasks(INPUTS) if task.run_id in stage_1]
+
+    assert len(shared) == 360
+    assert {tuple(task.run_id.split("__")[1:3]) for task in shared} == {
+        ("min_time", "skip_limit-2-hold"),
+        ("weighted-1", "skip_limit-2-hold"),
+    }
+    for task in shared:
+        assert task.config == stage_1[task.run_id].config
+        assert task.input_path == stage_1[task.run_id].input_path
+
+
+def test_m8_runs_with_no_guard_and_strict_runs_keep_their_phase_3_run_ids() -> None:
+    phase_3 = {task.run_id: task for task in behaviour_tasks(INPUTS)}
+    strict = [task for task in stage_1_tasks(INPUTS) if task.config.behaviour == "strict"]
+    no_guard = [task for task in stage_2_tasks(INPUTS) if task.config.guard_in_force == "none"]
+
+    assert (len(strict), len(no_guard)) == (1440, 360)
+    for task in strict + no_guard:
+        assert task.run_id in phase_3
+        assert task.input_path == phase_3[task.run_id].input_path
+        assert settings_record(task.config) == settings_record(phase_3[task.run_id].config)
+
+
+def test_m11_a_run_in_both_stages_executes_once_and_writes_a_row_for_each(tmp_path: Path) -> None:
+    file = tmp_path / "input.csv"
+    file.write_text(SIX_ROWS, encoding="utf-8")
+    config = SimConfig(algorithm="eta")
+    first = Task("shared", config, 1, "b", "p", "medium", 1, file)
+    second = Task("shared", config, 2, "b", "p", "medium", 1, file)
+    other = Task("other", replace(config, guard="none"), 2, "b", "p", "medium", 1, file)
+    out = tmp_path / "out"
+
+    run_suite([first, other, second], out, workers=1)
+
+    assert runs_executed(out) == 2
+    rows = read_rows(out / "simulation_stats.csv")
+    assert [(row["run_id"], row["stage"]) for row in rows] == [
+        ("shared", "1"),
+        ("other", "2"),
+        ("shared", "2"),
+    ]
+    assert read_manifest(out).runs == ["shared", "other"]
+    aggregated = read_rows(out / "aggregate_stats.csv")
+    assert [(row["config_id"], row["stage"], row["seeds"]) for row in aggregated] == [
+        (config_id(config), "1", "1"),
+        (config_id(other.config), "2", "1"),
+        (config_id(config), "2", "1"),
+    ]
+
+
+def test_m11_a_run_saved_for_one_stage_is_reused_for_the_other(tmp_path: Path) -> None:
+    file = tmp_path / "input.csv"
+    file.write_text(SIX_ROWS, encoding="utf-8")
+    config = SimConfig(algorithm="eta")
+    out = tmp_path / "out"
+    run_suite([Task("shared", config, 2, "b", "p", "medium", 1, file)], out, workers=1)
+
+    outcome = run_suite([Task("shared", config, 1, "b", "p", "medium", 1, file)], out, workers=1)
+
+    assert outcome.reused == 1
+    assert [row["stage"] for row in read_rows(out / "simulation_stats.csv")] == ["1"]
+
+
+@pytest.mark.parametrize(("stage", "size"), [("all", 10440), ("1", 7200), ("2", 3240)])
+def test_tst17_compare_runs_the_stages_it_is_asked_for(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stage: str, size: int
+) -> None:
+    sizes: list[int] = []
+
+    def fake_run(tasks: list[Task], out: Path, workers: int) -> SuiteOutcome:
+        sizes.append(len(tasks))
+        return SuiteOutcome([], 0)
+
+    monkeypatch.setattr("elevator_sim.cli.ensure_inputs", lambda *args: None)
+    monkeypatch.setattr("elevator_sim.cli.run_suite", fake_run)
+
+    assert main(["compare", "--suite", "--stage", stage, "--out", str(tmp_path / "out")]) == 0
+
+    assert sizes == [size]

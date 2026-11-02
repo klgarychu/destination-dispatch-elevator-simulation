@@ -13,7 +13,7 @@ import json
 import shutil
 import statistics
 import time
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
@@ -22,6 +22,7 @@ from typing import Any
 from elevator_sim.config import (
     ALGORITHMS,
     ALL_ALGORITHMS,
+    DEFAULT_GUARD,
     SimConfig,
     check_workers,
     config_id,
@@ -48,6 +49,7 @@ from elevator_sim.workload import (
     EXPRESS_BUILDINGS,
     EXPRESS_OWN_LIMIT,
     FIXED,
+    LOADS,
     OWN_LIMIT,
     SEEDS,
     InputSpec,
@@ -119,6 +121,42 @@ PACKAGE_DIR = Path(__file__).parent
 
 
 @dataclass(frozen=True, slots=True)
+class GuardSetting:
+    """One guard setting, applied over a building's settings."""
+
+    guard: str
+    skip_limit: int = 2
+    wait_limit: int | str = "2rt"
+    seat_hold: bool = True
+
+    def apply(self, config: SimConfig) -> SimConfig:
+        return replace(
+            config,
+            guard=self.guard,
+            skip_limit=self.skip_limit,
+            wait_limit=self.wait_limit,
+            seat_hold=self.seat_hold,
+        )
+
+
+# Stage 2 rows 1 to 4 (spec section 13.3), in that order, on marginal_insertion. Rows 5 to 10 need
+# assignment rules, which the owner skipped (M34). Guards rarely act in light traffic.
+STAGE_2_BEHAVIOURS: tuple[tuple[str, float | None], ...] = (("min_time", None), ("weighted", 1.0))
+STAGE_2_GUARDS = (
+    GuardSetting("none"),
+    GuardSetting("skip_limit", skip_limit=1),
+    GuardSetting("skip_limit", skip_limit=2),
+    GuardSetting("skip_limit", skip_limit=3),
+    GuardSetting("wait_expiry", wait_limit="1rt"),
+    GuardSetting("wait_expiry", wait_limit="2rt"),
+    GuardSetting("wait_expiry", wait_limit="3rt"),
+    GuardSetting("skip_limit", skip_limit=2, seat_hold=False),
+    GuardSetting("wait_expiry", wait_limit="2rt", seat_hold=False),
+)
+STAGE_2_LOADS = ("medium", "heavy", "overload")
+
+
+@dataclass(frozen=True, slots=True)
 class Task:
     run_id: str
     config: SimConfig
@@ -181,34 +219,65 @@ def _samples_this(spec: InputSpec) -> bool:
     return (spec.pattern, spec.load, spec.seed) in _SAMPLES
 
 
+Configs = Callable[[SimConfig], list[SimConfig]]
+
+
+def _seat_configs(seat_settings: Sequence[tuple[str, float | None]], guard: str) -> Configs:
+    """Every algorithm under each seat setting, with one guard."""
+
+    def configs(building: SimConfig) -> list[SimConfig]:
+        return [
+            replace(
+                building,
+                algorithm=algorithm,
+                behaviour=behaviour,
+                fairness_weight=weight,
+                guard=guard,
+            )
+            for behaviour, weight in seat_settings
+            for algorithm in ALL_ALGORITHMS
+        ]
+
+    return configs
+
+
+def _stage_2_configs(building: SimConfig) -> list[SimConfig]:
+    return [
+        setting.apply(
+            replace(
+                building,
+                algorithm="marginal_insertion",
+                behaviour=behaviour,
+                fairness_weight=weight,
+            )
+        )
+        for behaviour, weight in STAGE_2_BEHAVIOURS
+        for setting in STAGE_2_GUARDS
+    ]
+
+
 def _case_tasks(
     inputs: Path,
     quick: bool,
     own_limit: Sequence[str],
     shared: Mapping[str, str],
-    seat_settings: Sequence[tuple[str, float | None]],
-    guard: str,
+    configs: Configs,
+    stage: int = 1,
+    loads: Sequence[str] = tuple(LOADS),
 ) -> list[Task]:
-    """Every algorithm and seat setting on each case's own limit, then on shared passengers."""
+    """Every configuration on each case's own limit, then on shared passengers."""
     seeds = (SEEDS[0],) if quick else SEEDS
-
-    def configs(case: str) -> list[SimConfig]:
-        building = replace(building_config(case), guard=guard)
-        return [
-            replace(building, algorithm=algorithm, behaviour=behaviour, fairness_weight=weight)
-            for behaviour, weight in seat_settings
-            for algorithm in ALL_ALGORITHMS
-        ]
-
     tasks = []
     for spec in suite_inputs(seeds, own_limit):
+        if spec.load not in loads:
+            continue
         path = inputs / spec.name
-        for config in configs(spec.building):
+        for config in configs(building_config(spec.building)):
             tasks.append(
                 Task(
                     f"{config_id(config)}__{path.stem}",
                     config,
-                    1,
+                    stage,
                     spec.building,
                     spec.pattern,
                     spec.load,
@@ -219,13 +288,15 @@ def _case_tasks(
             )
     for case, base in shared.items():
         for spec in suite_inputs(seeds, (base,)):
+            if spec.load not in loads:
+                continue
             path = inputs / input_name(base, spec.pattern, spec.load, spec.seed)
-            for config in configs(case):
+            for config in configs(building_config(case)):
                 tasks.append(
                     Task(
                         f"{config_id(config)}__{case}__{FIXED}_{path.stem}",
                         config,
-                        1,
+                        stage,
                         case,
                         spec.pattern,
                         spec.load,
@@ -240,13 +311,30 @@ def _case_tasks(
 
 def express_tasks(inputs: Path, quick: bool = False) -> list[Task]:
     """Phase 2 (M30): the express cases, all on `min_time` with no guard, as they were run."""
-    only_min_time = (("min_time", None),)
-    return _case_tasks(inputs, quick, EXPRESS_OWN_LIMIT, EXPRESS_BUILDINGS, only_min_time, "none")
+    configs = _seat_configs((("min_time", None),), "none")
+    return _case_tasks(inputs, quick, EXPRESS_OWN_LIMIT, EXPRESS_BUILDINGS, configs)
 
 
 def behaviour_tasks(inputs: Path, quick: bool = False) -> list[Task]:
     """Phase 3 (M32): every seat setting on every algorithm, with no guard, as they were run."""
-    return _case_tasks(inputs, quick, BEHAVIOUR_OWN_LIMIT, BEHAVIOUR_SHARED, SEAT_SETTINGS, "none")
+    configs = _seat_configs(SEAT_SETTINGS, "none")
+    return _case_tasks(inputs, quick, BEHAVIOUR_OWN_LIMIT, BEHAVIOUR_SHARED, configs)
+
+
+def stage_1_tasks(inputs: Path, quick: bool = False) -> list[Task]:
+    """Stage 1 (spec section 13.2): every seat setting on every algorithm, with the default guard.
+
+    strict runs no guard whatever the setting (D24), so its runs match Phase 3's.
+    """
+    configs = _seat_configs(SEAT_SETTINGS, DEFAULT_GUARD)
+    return _case_tasks(inputs, quick, BEHAVIOUR_OWN_LIMIT, BEHAVIOUR_SHARED, configs)
+
+
+def stage_2_tasks(inputs: Path, quick: bool = False) -> list[Task]:
+    """Stage 2 rows 1 to 4: each guard setting alone, on marginal_insertion (M34)."""
+    return _case_tasks(
+        inputs, quick, BEHAVIOUR_OWN_LIMIT, BEHAVIOUR_SHARED, _stage_2_configs, 2, STAGE_2_LOADS
+    )
 
 
 def file_tasks(requests: Path, building: SimConfig, building_name: str) -> list[Task]:
@@ -277,9 +365,13 @@ def source_fingerprint(package: Path = PACKAGE_DIR) -> str:
 
 
 def run_fingerprint(task: Task, source: str) -> str:
-    """Everything a saved run depends on, except where its input file is kept."""
+    """Everything a saved run depends on, except where its input file is kept and its stage.
+
+    A run in both stages is one run, written as a row for each (M11).
+    """
     contents = hashlib.sha256(task.input_path.read_bytes()).hexdigest()
     identity = asdict(task) | {"input_path": contents, "source": source}
+    del identity["stage"]
     return hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
 
 
@@ -349,11 +441,17 @@ def _log_writer(path: Path) -> Any:
 
 
 def run_tasks(tasks: Sequence[Task], out: Path, workers: int) -> SuiteOutcome:
-    """Run every task without a current saved result, and reuse the rest."""
+    """Run every task without a current saved result, and reuse the rest.
+
+    A run asked for in both stages runs once (M11).
+    """
     (out / "runs").mkdir(parents=True, exist_ok=True)
     source = source_fingerprint()
-    todo = []
+    unique: dict[str, Task] = {}
     for task in tasks:
+        unique.setdefault(task.run_id, task)
+    todo = []
+    for task in unique.values():
         fingerprint = run_fingerprint(task, source)
         if not _is_current(task, fingerprint, out):
             _discard(task, out)
@@ -376,26 +474,28 @@ def run_tasks(tasks: Sequence[Task], out: Path, workers: int) -> SuiteOutcome:
                 futures = [pool.submit(run_task, task, mark, out) for task, mark in todo]
                 for future in as_completed(futures):
                     record(*future.result())
-    return SuiteOutcome(stalled, len(tasks) - len(todo))
+    return SuiteOutcome(stalled, len(unique) - len(todo))
 
 
 def load_rows(tasks: Iterable[Task], out: Path) -> list[dict[str, Any]]:
-    """One flat row per finished run, in task order."""
+    """One flat row per finished task, in task order. A run in both stages gives two rows."""
     rows = []
     for task in tasks:
         record = read_run_record(out, task.run_id)
         if record is not None:
             identity = {key: getattr(record, key) for key in _IDENTITY_COLUMNS}
+            identity["stage"] = task.stage
             rows.append(identity | record.settings | record.stats)
     return rows
 
 
 def aggregate(rows: Sequence[dict[str, Any]], keys: Sequence[str]) -> list[dict[str, Any]]:
-    """Mean, min and max of each statistic across seeds, per configuration and input group."""
-    groups: dict[tuple[str, str, str, str, str], list[dict[str, Any]]] = {}
+    """Mean, min and max of each statistic across seeds, per stage, configuration and inputs."""
+    groups: dict[tuple[str, int, str, str, str, str], list[dict[str, Any]]] = {}
     for row in rows:
         group = (
             row["config_id"],
+            row["stage"],
             row["building"],
             row["pattern"],
             row["load"],
@@ -404,9 +504,10 @@ def aggregate(rows: Sequence[dict[str, Any]], keys: Sequence[str]) -> list[dict[
         groups.setdefault(group, []).append(row)
 
     aggregated = []
-    for (config, building, pattern, load, load_basis), members in groups.items():
+    for (config, stage, building, pattern, load, load_basis), members in groups.items():
         entry: dict[str, Any] = {
             "config_id": config,
+            "stage": stage,
             "algorithm": members[0]["algorithm"],
             "behaviour": members[0]["behaviour"],
             "fairness_weight": members[0]["fairness_weight"],
@@ -437,6 +538,7 @@ def write_statistics(
     aggregated = aggregate(rows, AGGREGATE_KEYS)
     columns = [
         "config_id",
+        "stage",
         "algorithm",
         "behaviour",
         "fairness_weight",
@@ -476,11 +578,13 @@ def run_suite(tasks: Sequence[Task], out: Path, workers: int) -> SuiteOutcome:
     (out / MANIFEST_FILE).unlink(missing_ok=True)
     outcome = run_tasks(tasks, out, workers)
     rows = load_rows(tasks, out)
-    finished = [row["run_id"] for row in rows]
+    # Each run once, even if it is in both stages, in task order, so the files stay byte-identical.
+    finished = list(dict.fromkeys(row["run_id"] for row in rows))
     done = set(finished)
-    # In task order, not the order runs stalled in, so the files stay byte-identical.
-    not_finished = [task.run_id for task in tasks if task.run_id not in done]
+    not_finished = list(dict.fromkeys(task.run_id for task in tasks if task.run_id not in done))
     write_statistics(rows, out, not_finished)
-    samples = [task.run_id for task in tasks if task.sample and task.run_id in done]
+    samples = list(
+        dict.fromkeys(task.run_id for task in tasks if task.sample and task.run_id in done)
+    )
     write_manifest(out, Manifest(finished, not_finished, samples))
     return outcome

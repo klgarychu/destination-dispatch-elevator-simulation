@@ -14,6 +14,7 @@ ALL_ALGORITHMS = (*ALGORITHMS, "rush_express")
 BEHAVIOURS = ("strict", "min_time", "weighted")
 DEFAULT_WEIGHT = 1.0
 GUARDS = ("none", "skip_limit", "wait_expiry")
+DEFAULT_GUARD = "skip_limit"
 
 # Settings the design defines but this version doesn't build. Accepting them silently would let a
 # reader believe a rule was active when it wasn't (M12).
@@ -91,7 +92,7 @@ class SimConfig:
     max_ticks: int | None = None
     express: tuple[ExpressCar, ...] = ()
     fairness_weight: float | None = None
-    guard: str = "skip_limit"
+    guard: str = DEFAULT_GUARD
     skip_limit: int = 2
     # Ticks, or whole round trips written as "2rt".
     wait_limit: int | str = "2rt"

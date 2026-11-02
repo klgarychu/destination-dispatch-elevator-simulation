@@ -4,7 +4,7 @@ import statistics
 from collections.abc import Sequence
 from typing import Any
 
-from elevator_sim.config import ALL_ALGORITHMS, BEHAVIOURS
+from elevator_sim.config import ALL_ALGORITHMS, BEHAVIOURS, GUARDS
 from elevator_sim.workload import BUILDINGS, EXPRESS_BUILDINGS, FIXED, LOADS, OWN_LIMIT, PATTERNS
 
 _COLUMNS = (
@@ -25,9 +25,10 @@ def _place(options: Sequence[str], value: str) -> int:
     return options.index(value) if value in options else len(options)
 
 
-def _group_key(row: dict[str, Any]) -> tuple[int, int, str, int, str, int, str]:
+def _group_key(row: dict[str, Any]) -> tuple[int, int, int, str, int, str, int, str]:
     building, pattern, load = row["building"], row["pattern"], row["load"]
     return (
+        row["stage"],
         _place((OWN_LIMIT, FIXED), row["load_basis"]),
         _place((*BUILDINGS, *EXPRESS_BUILDINGS), building),
         building,
@@ -43,12 +44,33 @@ def _setting(row: dict[str, Any]) -> str:
     return row["behaviour"] if weight is None else f"{row['behaviour']} {weight:g}"
 
 
-def _display_order(row: dict[str, Any]) -> tuple[int, int, float]:
-    """Algorithm, then behaviour, then weight: a fixed order that ignores the results (G4)."""
+def _guard(row: dict[str, Any]) -> str:
+    if row["guard"] == "none":
+        return "none"
+    hold = "hold" if row["seat_hold"] else "no hold"
+    return f"{row['guard']} {row['guard_value']}, {hold}"
+
+
+def _limit_order(value: int | str | None) -> tuple[int, int]:
+    """Limits in round trips, then in ticks, each from the smallest."""
+    if isinstance(value, str):
+        return (0, int(value.removesuffix("rt")))
+    return (1, value or 0)
+
+
+def _display_order(row: dict[str, Any]) -> tuple[int, int, float, int, int, tuple[int, int]]:
+    """Algorithm, behaviour, weight, then guard: a fixed order that ignores the results (G4).
+
+    Guards follow spec section 13.3: none, then each guard with seat hold, then without it.
+    """
+    guard = row["guard"]
     return (
         _place(ALL_ALGORITHMS, row["algorithm"]),
         _place(BEHAVIOURS, row["behaviour"]),
         row["fairness_weight"] or 0.0,
+        0 if guard == "none" else 1 if row["seat_hold"] else 2,
+        _place(GUARDS, guard),
+        _limit_order(row["guard_value"]),
     )
 
 
@@ -57,7 +79,7 @@ def _cell(values: Sequence[float]) -> str:
 
 
 def _table(rows: Sequence[dict[str, Any]]) -> list[str]:
-    headers = ["Algorithm", "Behaviour", "Seeds", *[title for title, _ in _COLUMNS]]
+    headers = ["Algorithm", "Behaviour", "Guard", "Seeds", *[title for title, _ in _COLUMNS]]
     lines = [
         "| " + " | ".join(headers) + " |",
         "| " + " | ".join("---" for _ in headers) + " |",
@@ -68,6 +90,7 @@ def _table(rows: Sequence[dict[str, Any]]) -> list[str]:
         cells = [
             f"`{members[0]['algorithm']}`",
             f"`{_setting(members[0])}`",
+            f"`{_guard(members[0])}`",
             str(len(members)),
         ]
         for _, key in _COLUMNS:
@@ -121,16 +144,23 @@ def render_report(rows: Sequence[dict[str, Any]], not_finished: Sequence[str] = 
             "compared with, whose own sections are that load. Cases of another height keep the "
             "arrival ticks, with floors drawn for their height.",
         ]
-    groups: dict[tuple[int, int, str, int, str, int, str], list[dict[str, Any]]] = {}
+    if any(r["stage"] == 2 for r in rows):
+        lines += [
+            "",
+            "Sections marked Stage 2 test each guard setting alone, on `marginal_insertion` at "
+            "medium, heavy and overload load. A run that is also in Stage 1 is listed in both.",
+        ]
+    groups: dict[tuple[int, int, int, str, int, str, int, str], list[dict[str, Any]]] = {}
     for row in rows:
         groups.setdefault(_group_key(row), []).append(row)
     for key in sorted(groups):
         members = groups[key]
         first = members[0]
+        stage = "Stage 2: " if first["stage"] == 2 else ""
         label = ", fixed load" if first["load_basis"] == FIXED else ""
         lines += [
             "",
-            f"## {first['building']}, {first['pattern']}, {first['load']}{label}",
+            f"## {stage}{first['building']}, {first['pattern']}, {first['load']}{label}",
             "",
             *_table(members),
         ]
