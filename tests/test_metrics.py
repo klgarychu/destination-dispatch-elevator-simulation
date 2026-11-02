@@ -98,3 +98,72 @@ def test_r20_observations_state_plain_facts_about_one_run() -> None:
 
 def test_i5_no_passengers_give_no_observations() -> None:
     assert observations(simulate([], ONE_CAR)) == []
+
+
+def same_floor_flood() -> list[Request]:
+    """A long ride at floor 1, and a short ride arriving there every 2 ticks until tick 38."""
+    rows = [Request(0, "long", 1, 10)]
+    rows += [Request(tick, f"s{tick // 2}", 1, 2) for tick in range(0, 40, 2)]
+    return rows
+
+
+def test_tst05_flagged_passengers_and_the_share_above_the_wait_limit() -> None:
+    # Worked by hand, on one car with one seat. The long ride is flagged at tick 4 and is away
+    # until tick 22. Short ride sk then boards at tick 2k + 18, in request order, so each waits
+    # 18 ticks from s2 on. s4 to s19 are left behind at least twice, as is the long ride.
+    config = SimConfig(
+        elevators=1, capacity=1, algorithm="round_robin", guard="skip_limit", wait_limit=10
+    )
+
+    stats = run_stats(simulate(same_floor_flood(), config))
+
+    assert stats["flagged_passengers"] == 17
+    assert stats["share_above_wait_limit"] == pytest.approx(18 / 21)
+    assert stats["held_seat_ticks"] == 0
+
+
+def lobby_flood() -> list[Request]:
+    """One mid-floor passenger, then three lobby passengers every 2 ticks until tick 38."""
+    rows = [Request(0, "mid", 5, 9)]
+    rows += [Request(t, f"l{t}.{n}", 1, 8) for t in range(0, 40, 2) for n in range(3)]
+    return rows
+
+
+def test_tst05_held_seat_ticks_count_each_kept_seat_until_it_is_used() -> None:
+    # Worked by hand. With S = 2, the floor 5 passenger is flagged at tick 18. At tick 28 the car
+    # leaves floor 1 with one lobby passenger and keeps the other seat, and it is used at tick 32.
+    config = SimConfig(elevators=1, capacity=2, guard="skip_limit")
+
+    stats = run_stats(simulate(lobby_flood(), config))
+
+    assert stats["held_seat_ticks"] == 4
+
+
+@pytest.mark.parametrize(
+    "settings",
+    [{"guard": "none"}, {"behaviour": "strict"}, {"guard": "skip_limit", "seat_hold": False}],
+)
+def test_tst05_without_seat_hold_no_seat_is_kept(settings: dict[str, object]) -> None:
+    config = SimConfig(elevators=1, capacity=2, **settings)  # type: ignore[arg-type]
+
+    stats = run_stats(simulate(lobby_flood(), config))
+
+    assert stats["held_seat_ticks"] == 0
+
+
+@pytest.mark.parametrize("settings", [{"guard": "none"}, {"behaviour": "strict"}])
+def test_tst05_with_no_guard_in_force_nobody_is_flagged(settings: dict[str, object]) -> None:
+    config = SimConfig(elevators=1, capacity=1, algorithm="round_robin", **settings)  # type: ignore[arg-type]
+
+    stats = run_stats(simulate(same_floor_flood(), config))
+
+    assert stats["flagged_passengers"] == 0
+
+
+def test_m13_the_wait_limit_defaults_to_two_round_trips_for_every_guard() -> None:
+    # With no guard, the long ride waits 40 ticks, above 2 round trips of 36 ticks on 10 floors.
+    config = SimConfig(elevators=1, capacity=1, algorithm="round_robin", guard="none")
+
+    stats = run_stats(simulate(same_floor_flood(), config))
+
+    assert stats["share_above_wait_limit"] == pytest.approx(1 / 21)

@@ -6,6 +6,7 @@ from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from elevator_sim.boarding.guards import make_guard
 from elevator_sim.engine import SimulationResult
 from elevator_sim.requests import Passenger
 
@@ -55,7 +56,7 @@ def total_time(passenger: Passenger) -> int:
 
 
 def run_stats(result: SimulationResult) -> dict[str, int | float | None]:
-    """The Size, Wait, Total, Cars and Fairness columns of one simulation_stats.csv row."""
+    """The Size, Wait, Total, Cars, Fairness and Guards columns of one simulation_stats.csv row."""
     waits = [wait_time(p) for p in result.passengers]
     totals = [total_time(p) for p in result.passengers]
     left_behind = [p.times_left_behind for p in result.passengers]
@@ -77,6 +78,16 @@ def run_stats(result: SimulationResult) -> dict[str, int | float | None]:
     row["jain_total"] = jain_index(totals) if totals else None
     row["times_left_behind"] = sum(left_behind)
     row["max_left_behind_one_passenger"] = max(left_behind, default=0)
+    # Flags only ever turn on, so a passenger ever flagged is flagged as they board.
+    guard = make_guard(result.config)
+    row["flagged_passengers"] = sum(
+        1 for p in result.passengers if p.board_tick is not None and guard.flags(p, p.board_tick)
+    )
+    row["held_seat_ticks"] = result.held_seat_ticks
+    limit = result.config.wait_limit_ticks
+    row["share_above_wait_limit"] = (
+        sum(1 for wait in waits if wait > limit) / len(waits) if waits else None
+    )
     return row
 
 

@@ -105,13 +105,8 @@ AGGREGATE_KEYS = [
 ]
 STATS_COLUMNS = _IDENTITY_COLUMNS + _SETTINGS_COLUMNS + AGGREGATE_KEYS
 
-# Off values for statistics that arrive with guards and assignment rules.
-_NOT_BUILT_YET = {
-    "flagged_passengers": 0,
-    "fallback_count": 0,
-    "held_seat_ticks": 0,
-    "share_above_wait_limit": None,
-}
+# Assignment rules aren't built (M34), so their statistic holds its off value.
+_NOT_BUILT = {"fallback_count": 0}
 _SAMPLES = {("up_peak", "heavy", 1), ("lunch", "overload", 1)}
 SEAT_SETTINGS: tuple[tuple[str, float | None], ...] = (
     ("strict", None),
@@ -336,7 +331,7 @@ def run_task(task: Task, fingerprint: str, out: Path) -> tuple[str, str, float]:
         load_basis=task.load_basis,
         seed=task.seed,
         settings=settings_record(task.config),
-        stats=stats | _NOT_BUILT_YET,
+        stats=stats | _NOT_BUILT,
         waits=[wait_time(p) for p in result.passengers],
         totals=[total_time(p) for p in result.passengers],
         sample_dir=sample_dir,

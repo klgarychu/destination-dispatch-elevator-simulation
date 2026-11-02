@@ -35,6 +35,8 @@ class Elevator(ABC):
         self.moves = 0
         self.empty_moves = 0
         self.rider_moves = 0
+        # Empty seats kept for flagged passengers further along, until someone boards (M35).
+        self.held_seats = 0
 
     @abstractmethod
     def serves(self, floor: int) -> bool:
@@ -165,6 +167,7 @@ class Elevator(ABC):
         flagged = [p for p in going if self.guard.flags(p, tick)]
         others = self.behaviour.order([p for p in going if not self.guard.flags(p, tick)], tick)
         keepers = self._seat_keepers(tick)
+        boarded = blocked = 0
         for place, passenger in enumerate([*flagged, *others]):
             if len(self.riders) == self.capacity:
                 break
@@ -180,9 +183,13 @@ class Elevator(ABC):
                 # A blocked passenger stops boarding here, so nobody overtakes them (D28).
                 if self.behaviour.protects_earlier:
                     break
+                blocked += 1
                 continue
             passenger.board_tick = tick
             self.riders.append(passenger)
+            boarded += 1
+        if self.guard.seat_hold:
+            self._count_held_seats(boarded, blocked, keepers)
         for passenger in going:
             if passenger.board_tick is None:
                 passenger.times_left_behind += 1
@@ -190,6 +197,15 @@ class Elevator(ABC):
         if not queue:
             del self._waiting[self.position]
             self._waiting_floors.remove(self.position)
+
+    def _count_held_seats(self, boarded: int, blocked: int, keepers: list[Passenger]) -> None:
+        """Seats left empty here because seat hold left someone behind, until someone boards."""
+        if not keepers:
+            self.held_seats = 0
+            return
+        carried = max(0, self.held_seats - boarded)
+        free = self.capacity - len(self.riders)
+        self.held_seats = min(free, max(carried, blocked))
 
     def _seat_keepers(self, tick: int) -> list[Passenger]:
         """Passengers further along this sweep who may keep a seat from someone boarding here."""

@@ -27,6 +27,7 @@ class SimulationResult:
     moves: int
     empty_moves: int
     rider_moves: int
+    held_seat_ticks: int = 0
 
     @property
     def ticks(self) -> int:
@@ -51,6 +52,7 @@ def simulate(
     passengers: list[Passenger] = []
     positions: list[tuple[int, ...]] = []
     next_request = 0
+    held_seat_ticks = 0
     tick = 0
 
     while True:
@@ -71,6 +73,7 @@ def simulate(
         for car in fleet:
             car.exchange(tick)
         positions.append(tuple(car.position for car in fleet))
+        held_seat_ticks += sum(car.held_seats for car in fleet)
 
         if next_request == len(ordered) and not any(car.has_passengers for car in fleet):
             break
@@ -92,4 +95,5 @@ def simulate(
         sum(car.moves for car in fleet),
         sum(car.empty_moves for car in fleet),
         sum(car.rider_moves for car in fleet),
+        held_seat_ticks,
     )
