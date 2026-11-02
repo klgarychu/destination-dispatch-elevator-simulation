@@ -3,6 +3,7 @@
 from collections.abc import Sequence
 
 from elevator_sim.boarding.behaviours import make_behaviour
+from elevator_sim.boarding.guards import NO_GUARD, Guard
 from elevator_sim.elevators.base import Elevator
 from elevator_sim.elevators.express import ExpressElevator
 from elevator_sim.elevators.normal import NormalElevator
@@ -52,9 +53,10 @@ def car_at(
     waiting: Sequence[tuple[str, int, int]] = (),
     floors: int = 10,
     capacity: int = 6,
+    guard: Guard = NO_GUARD,
 ) -> NormalElevator:
     """A car placed mid-journey. `riders` are destinations, `waiting` is (id, source, dest)."""
-    car = NormalElevator(car_id, floors, capacity, position, make_behaviour("min_time"))
+    car = NormalElevator(car_id, floors, capacity, position, make_behaviour("min_time"), guard)
     car.direction = direction
     for index, dest in enumerate(riders):
         source = position if dest != position else position - 1

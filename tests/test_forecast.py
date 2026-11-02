@@ -4,6 +4,7 @@ import hypothesis.strategies as st
 from hypothesis import HealthCheck, example, given, settings
 from hypothesis.strategies import DrawFn
 
+from elevator_sim.boarding.guards import Guard
 from elevator_sim.config import ExpressCar, SimConfig
 from elevator_sim.elevators.normal import NormalElevator
 from elevator_sim.engine import simulate
@@ -71,6 +72,14 @@ class ReferenceSpy(Scheduler):
 
 
 SETTINGS = (("min_time", None), ("strict", None), ("weighted", 0.5), ("weighted", 2.0))
+# Every guard, with seat hold on and off, at limits low enough to act on these short inputs.
+GUARDS: tuple[dict[str, object], ...] = (
+    {"guard": "none"},
+    {"guard": "skip_limit", "skip_limit": 1},
+    {"guard": "skip_limit", "skip_limit": 2, "seat_hold": False},
+    {"guard": "wait_expiry", "wait_limit": 5},
+    {"guard": "wait_expiry", "wait_limit": "1rt", "seat_hold": False},
+)
 
 
 @st.composite
@@ -85,6 +94,7 @@ def scenarios(draw: DrawFn) -> tuple[SimConfig, list[Request]]:
     )
     behaviour, weight = draw(st.sampled_from(SETTINGS))
     config = SimConfig(
+        **draw(st.sampled_from(GUARDS)),  # type: ignore[arg-type]
         floors=floors,
         elevators=elevators,
         capacity=draw(st.integers(1, 4)),
@@ -266,3 +276,15 @@ def test_tst10_a_rider_arriving_this_tick_stays_in_the_forecast_until_the_exchan
     ride_to_the_next_tick(car, 0)
 
     assert set(view.baseline_forecast(1)) == {"rider1.0", "rider1.1"}
+
+
+def test_tst10_a_forecast_keeps_each_passengers_count_of_times_left_behind() -> None:
+    car = car_at(1, 1, Direction.UP, waiting=[("long", 1, 9), ("short", 1, 2)], capacity=1)
+    car.guard = Guard("skip_limit", 1)
+    car.passengers[0].times_left_behind = 1
+
+    forecast = view_of(car, capacity=1).baseline_forecast(1)
+
+    # The long ride is flagged, so it boards first, and the car is back for the short ride at 16.
+    assert (forecast["long"].board_tick, forecast["long"].dropoff_tick) == (0, 8)
+    assert (forecast["short"].board_tick, forecast["short"].dropoff_tick) == (16, 17)

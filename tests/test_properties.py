@@ -12,6 +12,14 @@ from elevator_sim.requests import Request
 from helpers import assert_rules_hold
 
 SETTINGS = (("min_time", None), ("strict", None), ("weighted", 0.5), ("weighted", 2.0))
+# Every guard, with seat hold on and off, at limits low enough to act on these short inputs.
+GUARDS: tuple[dict[str, object], ...] = (
+    {"guard": "none"},
+    {"guard": "skip_limit", "skip_limit": 1},
+    {"guard": "skip_limit", "skip_limit": 2, "seat_hold": False},
+    {"guard": "wait_expiry", "wait_limit": 5},
+    {"guard": "wait_expiry", "wait_limit": "1rt", "seat_hold": False},
+)
 
 
 @st.composite
@@ -26,6 +34,7 @@ def scenarios(draw: DrawFn, max_requests: int = 30) -> tuple[SimConfig, list[Req
     )
     behaviour, weight = draw(st.sampled_from(SETTINGS))
     config = SimConfig(
+        **draw(st.sampled_from(GUARDS)),  # type: ignore[arg-type]
         floors=floors,
         elevators=elevators,
         capacity=draw(st.integers(1, 5)),
