@@ -14,7 +14,17 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 
-# Generated inputs and run data
+# Generated inputs and run data. Of the results, only the charts and each report.md, their table
+# view, are published. Every other file is reproduced by the commands in the README.
 data/generated/
-results/runs/
-results/phase*/
+results/*
+!results/charts/
+!results/report.md
+!results/cases/
+!results/express/
+results/cases/*
+results/express/*
+!results/cases/charts/
+!results/cases/report.md
+!results/express/charts/
+!results/express/report.md
