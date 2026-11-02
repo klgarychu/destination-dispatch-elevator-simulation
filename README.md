@@ -195,11 +195,30 @@ The limits are frozen, so every experiment uses the same passengers. Measured wi
 
 ## Conclusion
 
-To be written by the author.
+These figures come from the final results, with `min_time` and the default guard unless stated.
+
+**`marginal_insertion` looks like the strongest all-round algorithm.** Unlike `eta`, it counts the delay to passengers already assigned, not just the new one. On every building with more than one car, it had the lowest average total time, p95 wait and longest wait at light and medium traffic. At heavy traffic on `uniform`, `down_peak` and `lunch`, its average was 35% to 65% below the next algorithm's, and its p95 and longest waits stayed the lowest almost everywhere. The exception is the morning rush: at `up_peak` in heavy traffic and overload, `zone_based` had a lower average on 13 of 14 building and level pairs.
+
+**Other factors help most in particular situations:**
+
+- **Express cars, at the morning rush.** `rush_express` gives the cars any-floor, low-rise and high-rise roles only while most requests come from the lobby. At `up_peak` on `3car-60floor-6cap`, it cut the average by 27% at heavy traffic and 36% in overload against `marginal_insertion`, and beat `zone_based` too. At other times it changed nothing. Fixed express layouts also helped at `up_peak`, by up to 30% at heavy traffic, but every one of them cost time under `uniform` traffic.
+- **The guard, for fairness.** It roughly halved the longest wait, by 47% at both heavy traffic and overload, for 10% and 32% more average time. The most times one passenger was left behind fell from 6.5 to 2.5 at heavy traffic. Seat hold does most of that work.
+- **Seat behaviour, when no guard runs.** At heavy traffic with no guard, `weighted` at weight 1 cut the longest wait by 39% for 9% more average time, and `strict` by 49% for 32%. With the guard on, they add little.
+
+The guard and seat figures are for `marginal_insertion` on `3car-60floor-6cap`, averaged over the four patterns and five seeds.
+
+**This is not academic research.** It's a take-home exercise in a simplified model. Stops take no time, the traffic is simulated, and there are five seeds and no significance tests. Several rules are our own adaptations with no published source, and the 60-floor buildings are taller than any in the studies I read. The results compare options within this model. They don't predict how a real building will perform.
 
 ## Time spent
 
-To be filled in by the author.
+| Activity | Hours |
+| --- | ---: |
+| Research | 3 |
+| Instructing the agentic planning, design and development workflow | 2 |
+| Reviewing and improving the code, design and plan | 7 |
+| Preparing the presentation | 2 |
+| Agentic work by Claude Code | 20 |
+| **Total** | **34** |
 
 ## AI assistance
 
