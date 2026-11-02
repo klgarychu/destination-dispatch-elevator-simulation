@@ -1,8 +1,13 @@
 # Elevator scheduling simulation
 
+> [!TIP]
+> **Read the final presentation: [results/final_presentation.pdf](results/final_presentation.pdf)**
+>
+> 26 slides on what drives elevator waiting and what it costs to protect the worst case, with the assumptions, trade-offs and the author's conclusion.
+
 A discrete-time Python simulation of a destination-dispatch elevator system. A passenger gives their origin and destination when they make a request, and the system immediately assigns them to one car. The project compares six dispatch algorithms, three seat behaviours and two guards against long waits, under simulated traffic.
 
-The software presents statistics and charts in a fixed order, and never ranks results or names a winner. A person reads them and decides. The author's conclusion is in [Conclusion](#conclusion), and the final presentation is [results/final_presentation.pdf](results/final_presentation.pdf).
+The software presents statistics and charts in a fixed order, and never ranks results or names a winner. A person reads them and decides. The author's conclusion is in [Conclusion](#conclusion).
 
 ## Requirements
 
