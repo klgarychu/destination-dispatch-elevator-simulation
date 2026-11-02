@@ -4,7 +4,7 @@ import statistics
 from collections.abc import Sequence
 from typing import Any
 
-from elevator_sim.config import ALL_ALGORITHMS
+from elevator_sim.config import ALL_ALGORITHMS, BEHAVIOURS
 from elevator_sim.workload import BUILDINGS, EXPRESS_BUILDINGS, FIXED, LOADS, OWN_LIMIT, PATTERNS
 
 _COLUMNS = (
@@ -38,6 +38,20 @@ def _group_key(row: dict[str, Any]) -> tuple[int, int, str, int, str, int, str]:
     )
 
 
+def _setting(row: dict[str, Any]) -> str:
+    weight = row["fairness_weight"]
+    return row["behaviour"] if weight is None else f"{row['behaviour']} {weight:g}"
+
+
+def _display_order(row: dict[str, Any]) -> tuple[int, int, float]:
+    """Algorithm, then behaviour, then weight: a fixed order that ignores the results (G4)."""
+    return (
+        _place(ALL_ALGORITHMS, row["algorithm"]),
+        _place(BEHAVIOURS, row["behaviour"]),
+        row["fairness_weight"] or 0.0,
+    )
+
+
 def _cell(values: Sequence[float]) -> str:
     return f"{statistics.fmean(values):.2f} ({min(values):.2f} to {max(values):.2f})"
 
@@ -48,18 +62,12 @@ def _table(rows: Sequence[dict[str, Any]]) -> list[str]:
         "| " + " | ".join(headers) + " |",
         "| " + " | ".join("---" for _ in headers) + " |",
     ]
-    configs = dict.fromkeys(row["config_id"] for row in rows)
-    ordered = sorted(
-        configs,
-        key=lambda config: _place(
-            ALL_ALGORITHMS, next(r["algorithm"] for r in rows if r["config_id"] == config)
-        ),
-    )
-    for config in ordered:
+    configs = {row["config_id"]: row for row in rows}
+    for config in sorted(configs, key=lambda name: _display_order(configs[name])):
         members = [row for row in rows if row["config_id"] == config]
         cells = [
             f"`{members[0]['algorithm']}`",
-            f"`{members[0]['behaviour']}`",
+            f"`{_setting(members[0])}`",
             str(len(members)),
         ]
         for _, key in _COLUMNS:

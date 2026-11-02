@@ -395,6 +395,48 @@ def test_tst18_titles_notes_and_legends_fit_a_chart_of_one_input(
     plt.close("all")
 
 
+def test_m32_only_the_fairness_chart_shows_other_seat_behaviours(tmp_path: Path) -> None:
+    file = write_input(tmp_path, "input.csv", SIX_ROWS)
+
+    def tasks(behaviour: str, weight: float | None) -> list[Task]:
+        configs = [
+            SimConfig(algorithm=name, behaviour=behaviour, fairness_weight=weight)
+            for name in ALGORITHMS
+        ]
+        return [
+            Task(f"{config_id(c)}_run", c, 1, "custom", "uniform", "light", 1, file)
+            for c in configs
+        ]
+
+    plain = tasks("min_time", None)
+    run_suite(plain, tmp_path / "one", workers=1)
+    run_suite(plain + tasks("strict", None) + tasks("weighted", 2.0), tmp_path / "three", workers=1)
+
+    assert draw(tmp_path / "one", tmp_path / "one_charts") == 0
+    assert draw(tmp_path / "three", tmp_path / "three_charts") == 0
+
+    drawn = sorted(path.name for path in (tmp_path / "one_charts").glob("*.png"))
+    assert "fairness_vs_efficiency_custom.png" in drawn
+    for name in drawn:
+        same = (tmp_path / "three_charts" / name).read_bytes() == (
+            tmp_path / "one_charts" / name
+        ).read_bytes()
+        assert same == (not name.startswith("fairness"))
+
+
+def test_m32_each_seat_setting_has_its_own_marker() -> None:
+    from elevator_sim.charts import SETTING_MARKERS
+
+    assert list(SETTING_MARKERS) == [
+        "strict",
+        "min_time",
+        "weighted 0.5",
+        "weighted 1",
+        "weighted 2",
+    ]
+    assert len(set(SETTING_MARKERS.values())) == 5
+
+
 def test_review_15_chart_notes_call_the_seed_range_descriptive_not_a_test() -> None:
     from elevator_sim.charts import SPREAD_NOTE
 

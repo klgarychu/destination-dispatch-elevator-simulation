@@ -13,7 +13,7 @@ import json
 import shutil
 import statistics
 import time
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
@@ -43,6 +43,8 @@ from elevator_sim.output import (
 from elevator_sim.report import render_report
 from elevator_sim.requests import load_requests
 from elevator_sim.workload import (
+    BEHAVIOUR_OWN_LIMIT,
+    BEHAVIOUR_SHARED,
     EXPRESS_BUILDINGS,
     EXPRESS_OWN_LIMIT,
     FIXED,
@@ -111,6 +113,13 @@ _NOT_BUILT_YET = {
     "share_above_wait_limit": None,
 }
 _SAMPLES = {("up_peak", "heavy", 1), ("lunch", "overload", 1)}
+SEAT_SETTINGS: tuple[tuple[str, float | None], ...] = (
+    ("strict", None),
+    ("min_time", None),
+    ("weighted", 0.5),
+    ("weighted", 1.0),
+    ("weighted", 2.0),
+)
 PACKAGE_DIR = Path(__file__).parent
 
 
@@ -177,15 +186,28 @@ def _samples_this(spec: InputSpec) -> bool:
     return (spec.pattern, spec.load, spec.seed) in _SAMPLES
 
 
-def express_tasks(inputs: Path, quick: bool = False) -> list[Task]:
-    """Phase 2 (M30): every algorithm on each case's own limit, then on shared passengers."""
+def _case_tasks(
+    inputs: Path,
+    quick: bool,
+    own_limit: Sequence[str],
+    shared: Mapping[str, str],
+    seat_settings: Sequence[tuple[str, float | None]],
+) -> list[Task]:
+    """Every algorithm and seat setting on each case's own limit, then on shared passengers."""
     seeds = (SEEDS[0],) if quick else SEEDS
+
+    def configs(case: str) -> list[SimConfig]:
+        building = building_config(case)
+        return [
+            replace(building, algorithm=algorithm, behaviour=behaviour, fairness_weight=weight)
+            for behaviour, weight in seat_settings
+            for algorithm in ALL_ALGORITHMS
+        ]
+
     tasks = []
-    for spec in suite_inputs(seeds, EXPRESS_OWN_LIMIT):
-        building = building_config(spec.building)
+    for spec in suite_inputs(seeds, own_limit):
         path = inputs / spec.name
-        for algorithm in ALL_ALGORITHMS:
-            config = replace(building, algorithm=algorithm)
+        for config in configs(spec.building):
             tasks.append(
                 Task(
                     f"{config_id(config)}__{path.stem}",
@@ -199,12 +221,10 @@ def express_tasks(inputs: Path, quick: bool = False) -> list[Task]:
                     _samples_this(spec),
                 )
             )
-    for case, base in EXPRESS_BUILDINGS.items():
-        building = building_config(case)
+    for case, base in shared.items():
         for spec in suite_inputs(seeds, (base,)):
             path = inputs / input_name(base, spec.pattern, spec.load, spec.seed)
-            for algorithm in ALL_ALGORITHMS:
-                config = replace(building, algorithm=algorithm)
+            for config in configs(case):
                 tasks.append(
                     Task(
                         f"{config_id(config)}__{case}__{FIXED}_{path.stem}",
@@ -220,6 +240,16 @@ def express_tasks(inputs: Path, quick: bool = False) -> list[Task]:
                     )
                 )
     return tasks
+
+
+def express_tasks(inputs: Path, quick: bool = False) -> list[Task]:
+    """Phase 2 (M30): the express cases, all on `min_time`."""
+    return _case_tasks(inputs, quick, EXPRESS_OWN_LIMIT, EXPRESS_BUILDINGS, (("min_time", None),))
+
+
+def behaviour_tasks(inputs: Path, quick: bool = False) -> list[Task]:
+    """Phase 3 (M32): every seat setting on every algorithm."""
+    return _case_tasks(inputs, quick, BEHAVIOUR_OWN_LIMIT, BEHAVIOUR_SHARED, SEAT_SETTINGS)
 
 
 def file_tasks(requests: Path, building: SimConfig, building_name: str) -> list[Task]:
@@ -382,6 +412,7 @@ def aggregate(rows: Sequence[dict[str, Any]], keys: Sequence[str]) -> list[dict[
             "config_id": config,
             "algorithm": members[0]["algorithm"],
             "behaviour": members[0]["behaviour"],
+            "fairness_weight": members[0]["fairness_weight"],
             "building": building,
             "pattern": pattern,
             "load": load,
@@ -411,6 +442,7 @@ def write_statistics(
         "config_id",
         "algorithm",
         "behaviour",
+        "fairness_weight",
         "building",
         "pattern",
         "load",

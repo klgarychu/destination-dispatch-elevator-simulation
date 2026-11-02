@@ -20,6 +20,7 @@ def row(
         "pattern": "lunch",
         "load": "heavy",
         "load_basis": "own_limit",
+        "fairness_weight": None,
         "seed": seed,
         "unguarded": unguarded,
         "passengers": 100,
@@ -138,6 +139,27 @@ def test_review_15_the_report_calls_the_seed_range_descriptive_not_a_test() -> N
 
     assert "noise" not in report
     assert "isn't a significance test" in report
+
+
+def test_m32_behaviours_appear_in_a_fixed_order_whatever_the_values() -> None:
+    def setting(behaviour: str, weight: float | None, total: float) -> dict[str, object]:
+        config = SimConfig(behaviour=behaviour, fairness_weight=weight)
+        fields = {"config_id": config_id(config), "behaviour": behaviour, "fairness_weight": weight}
+        return {**row("marginal_insertion", total), **fields}
+
+    report = render_report(
+        [
+            setting("weighted", 2.0, 5.0),
+            setting("min_time", None, 1.0),
+            setting("weighted", 0.5, 9.0),
+            setting("strict", None, 7.0),
+        ]
+    )
+
+    places = [
+        report.index(name) for name in ("`strict`", "`min_time`", "`weighted 0.5`", "`weighted 2`")
+    ]
+    assert places == sorted(places)
 
 
 def test_report_gives_the_mean_and_the_spread_across_seeds() -> None:

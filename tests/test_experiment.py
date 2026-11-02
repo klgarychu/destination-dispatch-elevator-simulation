@@ -14,6 +14,7 @@ from elevator_sim.experiment import (
     SuiteOutcome,
     Task,
     aggregate,
+    behaviour_tasks,
     express_tasks,
     run_suite,
     run_tasks,
@@ -141,6 +142,7 @@ def test_tst16_aggregate_gives_mean_min_and_max_across_seeds() -> None:
             "pattern": "p",
             "load": "l",
             "load_basis": "own_limit",
+            "fairness_weight": None,
             "seed": 1,
             "total_mean": 10.0,
             "wait_max": 4,
@@ -153,6 +155,7 @@ def test_tst16_aggregate_gives_mean_min_and_max_across_seeds() -> None:
             "pattern": "p",
             "load": "l",
             "load_basis": "own_limit",
+            "fairness_weight": None,
             "seed": 2,
             "total_mean": 20.0,
             "wait_max": 8,
@@ -165,6 +168,7 @@ def test_tst16_aggregate_gives_mean_min_and_max_across_seeds() -> None:
             "pattern": "p",
             "load": "other",
             "load_basis": "own_limit",
+            "fairness_weight": None,
             "seed": 1,
             "total_mean": 99.0,
             "wait_max": 1,
@@ -575,10 +579,10 @@ def test_m30_the_phase_1_suite_is_unchanged() -> None:
 def test_m30_compare_runs_the_suite_of_the_phase_it_is_asked_for(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    asked: list[str] = []
+    sizes: list[int] = []
 
     def fake_run(tasks: list[Task], out: Path, workers: int) -> SuiteOutcome:
-        asked.append(tasks[0].building)
+        sizes.append(len(tasks))
         return SuiteOutcome([], 0)
 
     monkeypatch.setattr("elevator_sim.cli.ensure_inputs", lambda *args: None)
@@ -586,9 +590,8 @@ def test_m30_compare_runs_the_suite_of_the_phase_it_is_asked_for(
     out = str(tmp_path / "out")
 
     assert main(["compare", "--suite", "--phase", "1", "--out", out]) == 0
-    assert main(["compare", "--suite", "--out", out]) == 0
 
-    assert asked == ["1car-10floor-6cap", "3car-10floor-6cap"]
+    assert sizes == [6000]
 
 
 def test_m30_a_fixed_load_sample_keeps_its_logs_apart_from_the_run_that_shares_its_file(
@@ -604,6 +607,93 @@ def test_m30_a_fixed_load_sample_keeps_its_logs_apart_from_the_run_that_shares_i
 
     assert (tmp_path / "samples" / "input" / "eta__min_time__none__none").exists()
     assert (tmp_path / "samples" / "b__input" / "eta__min_time__none__none").exists()
+
+
+def test_m32_the_behaviour_suite_has_every_setting_on_every_algorithm() -> None:
+    tasks = behaviour_tasks(Path("data/generated"))
+
+    assert len(tasks) == 7200
+    assert len({task.run_id for task in tasks}) == 7200
+    assert {task.config.algorithm for task in tasks} == set(ALL_ALGORITHMS)
+    assert {(task.config.behaviour, task.config.fairness_weight) for task in tasks} == {
+        ("strict", None),
+        ("min_time", None),
+        ("weighted", 0.5),
+        ("weighted", 1.0),
+        ("weighted", 2.0),
+    }
+    assert {task.building for task in tasks} == {
+        "3car-10floor-6cap",
+        "3car-60floor-6cap",
+        "3car-60floor-6cap-overlap",
+    }
+
+
+def test_m32_the_overlap_layout_runs_on_the_reference_passengers() -> None:
+    tasks = behaviour_tasks(Path("data/generated"))
+
+    assert {
+        task.input_path.name
+        for task in tasks
+        if task.building == "3car-60floor-6cap-overlap"
+        and (task.pattern, task.load, task.seed) == ("lunch", "heavy", 2)
+    } == {"3car-60floor-6cap_lunch_heavy_s2.csv"}
+
+
+def test_m32_min_time_keeps_its_phase_2_run_ids_so_rows_can_be_compared() -> None:
+    phase_2 = {task.run_id: task for task in express_tasks(Path("data/generated"))}
+    shared = [
+        task
+        for task in behaviour_tasks(Path("data/generated"))
+        if task.config.behaviour == "min_time"
+    ]
+
+    assert len(shared) == 1440
+    for task in shared:
+        assert task.run_id in phase_2
+        assert task.input_path == phase_2[task.run_id].input_path
+        assert task.config == phase_2[task.run_id].config
+
+
+def test_m32_compare_defaults_to_the_behaviour_suite(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sizes: list[int] = []
+
+    def fake_run(tasks: list[Task], out: Path, workers: int) -> SuiteOutcome:
+        sizes.append(len(tasks))
+        return SuiteOutcome([], 0)
+
+    monkeypatch.setattr("elevator_sim.cli.ensure_inputs", lambda *args: None)
+    monkeypatch.setattr("elevator_sim.cli.run_suite", fake_run)
+    out = str(tmp_path / "out")
+
+    assert main(["compare", "--suite", "--out", out]) == 0
+    assert main(["compare", "--suite", "--phase", "2", "--out", out]) == 0
+
+    assert sizes == [7200, 4800]
+
+
+def test_m32_aggregate_keeps_each_weight_apart(tmp_path: Path) -> None:
+    file = tmp_path / "input.csv"
+    file.write_text(SIX_ROWS, encoding="utf-8")
+    light = SimConfig(behaviour="weighted", fairness_weight=0.5)
+    heavy = SimConfig(behaviour="weighted", fairness_weight=2.0)
+    out = tmp_path / "out"
+
+    run_suite(
+        [
+            Task("light", light, 1, "a", "p", "l", 1, file),
+            Task("heavy", heavy, 1, "a", "p", "l", 1, file),
+        ],
+        out,
+        workers=1,
+    )
+
+    assert [row["fairness_weight"] for row in read_rows(out / "aggregate_stats.csv")] == [
+        "0.5",
+        "2.0",
+    ]
 
 
 def test_tst17_quick_suite_uses_seed_1_only() -> None:

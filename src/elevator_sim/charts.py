@@ -1,6 +1,8 @@
 """Static PNG charts from saved statistics. Fixed order, and nothing is ranked or highlighted.
 
-Charts show each case against its own limit, so the fixed-load runs are left out of them.
+Charts show each case against its own limit, so the fixed-load runs are left out of them. Most show
+one line per algorithm, so when several seat behaviours ran they use `min_time`. The fairness chart
+shows every behaviour and weight.
 
 The colours pass a colour-blindness check with every pair in play, as scatter charts need. Two of
 them have low contrast against the background, so report.md is the table view of every chart.
@@ -41,6 +43,13 @@ MARKERS = {
     "eta": "D",
     "marginal_insertion": "P",
     "rush_express": "X",
+}
+SETTING_MARKERS = {
+    "strict": "s",
+    "min_time": "o",
+    "weighted 0.5": "^",
+    "weighted 1": "D",
+    "weighted 2": "v",
 }
 TITLES = {
     "algorithm_comparison": "Mean total time per passenger, by algorithm",
@@ -99,8 +108,18 @@ def _figure(rows: int, columns: int, width: float, height: float) -> tuple[Figur
     return figure, axes
 
 
+def _setting(row: dict[str, str]) -> str:
+    weight = row["fairness_weight"]
+    return f"{row['behaviour']} {float(weight):g}" if weight else row["behaviour"]
+
+
 def _finish(
-    figure: Figure, path: Path, title: str, notes: Sequence[str], algorithms: Sequence[str]
+    figure: Figure,
+    path: Path,
+    title: str,
+    notes: Sequence[str],
+    algorithms: Sequence[str],
+    settings: Sequence[str] = (),
 ) -> None:
     """Title and notes at the top left, with the legend below them."""
     height = figure.get_figheight()
@@ -130,7 +149,29 @@ def _finish(
             fontsize=9,
             labelcolor=_SECONDARY_INK,
         )
-    figure.tight_layout(rect=(0, 0, 1, 1 - 0.8 / height))
+    if settings:
+        shapes = [
+            Line2D(
+                [],
+                [],
+                color=_SECONDARY_INK,
+                marker=SETTING_MARKERS[name],
+                markersize=6,
+                linewidth=0,
+                label=name,
+            )
+            for name in settings
+        ]
+        figure.legend(
+            handles=shapes,
+            loc="upper left",
+            bbox_to_anchor=(0.015, 1 - 0.74 / height),
+            ncols=len(shapes),
+            frameon=False,
+            fontsize=9,
+            labelcolor=_SECONDARY_INK,
+        )
+    figure.tight_layout(rect=(0, 0, 1, 1 - (1.05 if settings else 0.8) / height))
     figure.savefig(path, dpi=150, facecolor=_SURFACE, metadata={"Software": None})
     plt.close(figure)
 
@@ -234,12 +275,14 @@ def _saved_run(stats: Path, run_id: str) -> RunRecord:
 
 
 def pooled_times(
-    stats: Path, run_ids: Sequence[str], building: str
+    stats: Path, run_ids: Sequence[str], building: str, behaviour: str | None = None
 ) -> dict[tuple[str, str], dict[str, list[int]]]:
     pooled: dict[tuple[str, str], dict[str, list[int]]] = {}
     for run_id in run_ids:
         record = _saved_run(stats, run_id)
         if record.building != building or record.load_basis == FIXED:
+            continue
+        if behaviour is not None and record.settings["behaviour"] != behaviour:
             continue
         key = (record.load, record.settings["algorithm"])
         times = pooled.setdefault(key, {"wait": [], "total": []})
@@ -261,8 +304,10 @@ def _box(values: Sequence[int], label: str) -> dict[str, Any]:
     }
 
 
-def _distributions(stats: Path, run_ids: Sequence[str], building: str, path: Path) -> None:
-    pooled = pooled_times(stats, run_ids, building)
+def _distributions(
+    stats: Path, run_ids: Sequence[str], building: str, path: Path, behaviour: str | None
+) -> None:
+    pooled = pooled_times(stats, run_ids, building, behaviour)
     loads = _in_order((load for load, _ in pooled), list(LOADS))
     algorithms = fixed_order(name for _, name in pooled)
     figure, axes = _distribution_figure(len(loads))
@@ -322,6 +367,8 @@ def _fairness_vs_efficiency(rows: Sequence[dict[str, str]], path: Path) -> None:
     patterns = _in_order((row["pattern"] for row in rows), list(PATTERNS))
     loads = _in_order((row["load"] for row in rows), list(LOADS))
     algorithms = fixed_order(row["algorithm"] for row in rows)
+    settings = _in_order((_setting(row) for row in rows), list(SETTING_MARKERS))
+    several = len(settings) > 1
     width = max(2.6 * len(patterns) + 0.6, _MIN_WIDTH)
     figure, axes = _figure(len(loads), len(patterns), width, 2.2 * len(loads) + 1.0)
     for row_index, load in enumerate(loads):
@@ -350,7 +397,7 @@ def _fairness_vs_efficiency(rows: Sequence[dict[str, str]], path: Path) -> None:
                 axis.plot(
                     x,
                     y,
-                    marker=MARKERS[name],
+                    marker=SETTING_MARKERS[_setting(row)] if several else MARKERS[name],
                     color=COLOURS[name],
                     markersize=6,
                     markeredgecolor=_SURFACE,
@@ -365,6 +412,7 @@ def _fairness_vs_efficiency(rows: Sequence[dict[str, str]], path: Path) -> None:
         TITLES["fairness_vs_efficiency"],
         ["Further left is less total time, and lower down is a shorter long wait.", SPREAD_NOTE],
         algorithms,
+        settings if several else (),
     )
 
 
@@ -422,11 +470,15 @@ def _load_response(rows: Sequence[dict[str, str]], path: Path) -> None:
     )
 
 
-def _car_movement(stats: Path, sample_ids: Sequence[str], building: str, path: Path) -> None:
+def _car_movement(
+    stats: Path, sample_ids: Sequence[str], building: str, path: Path, behaviour: str | None
+) -> None:
     runs: dict[str, Path] = {}
     for run_id in sample_ids:
         record = _saved_run(stats, run_id)
         run = (record.pattern, record.load, record.seed)
+        if behaviour is not None and record.settings["behaviour"] != behaviour:
+            continue
         if record.building == building and run == _SAMPLE_RUN and record.sample_dir:
             runs[record.settings["algorithm"]] = stats / record.sample_dir
     if not runs:
@@ -476,21 +528,23 @@ def write_charts(stats: Path, out: Path) -> list[Path]:
     if not any(_has_passengers(row) for row in rows):
         return []
     written = []
+    behaviour = "min_time" if len({_setting(row) for row in rows}) > 1 else None
     for building in dict.fromkeys(row["building"] for row in rows):
         members = [row for row in rows if row["building"] == building]
-        for name, draw in (
-            ("algorithm_comparison", _algorithm_comparison),
-            ("fairness_vs_efficiency", _fairness_vs_efficiency),
-            ("load_response", _load_response),
+        one_line_each = [r for r in members if behaviour is None or r["behaviour"] == behaviour]
+        for name, draw, drawn_rows in (
+            ("algorithm_comparison", _algorithm_comparison, one_line_each),
+            ("fairness_vs_efficiency", _fairness_vs_efficiency, members),
+            ("load_response", _load_response, one_line_each),
         ):
             target = out / f"{name}_{building}.png"
-            draw(members, target)
+            draw(drawn_rows, target)
             written.append(target)
         target = out / f"distributions_{building}.png"
-        _distributions(stats, run_ids, building, target)
+        _distributions(stats, run_ids, building, target, behaviour)
         written.append(target)
         target = out / f"car_movement_{building}.png"
-        _car_movement(stats, manifest.samples, building, target)
+        _car_movement(stats, manifest.samples, building, target, behaviour)
         if target.exists():
             written.append(target)
     return written

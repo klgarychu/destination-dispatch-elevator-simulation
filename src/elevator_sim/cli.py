@@ -9,7 +9,13 @@ from pathlib import Path
 from elevator_sim.calibration import calibrate
 from elevator_sim.config import ConfigError, SimConfig, load_config
 from elevator_sim.engine import SimulationStalledError, simulate
-from elevator_sim.experiment import express_tasks, file_tasks, run_suite, suite_tasks
+from elevator_sim.experiment import (
+    behaviour_tasks,
+    express_tasks,
+    file_tasks,
+    run_suite,
+    suite_tasks,
+)
 from elevator_sim.output import format_summary, summary_data, write_run
 from elevator_sim.requests import InputValidationError, load_requests
 from elevator_sim.workload import (
@@ -80,7 +86,8 @@ def _compare(args: argparse.Namespace) -> int:
         if args.stage not in ("all", "1"):
             raise ConfigError("Stage 2 arrives in Phase 4")
         ensure_inputs(args.inputs, (SEEDS[0],) if args.quick else SEEDS)
-        tasks = (suite_tasks if args.phase == 1 else express_tasks)(args.inputs, args.quick)
+        suites = {1: suite_tasks, 2: express_tasks, 3: behaviour_tasks}
+        tasks = suites[args.phase](args.inputs, args.quick)
     elif args.requests:
         config = load_config(args.config) if args.config else SimConfig()
         building = args.config.stem if args.config else "custom"
@@ -144,7 +151,7 @@ def _parser() -> argparse.ArgumentParser:
     compare.add_argument("--requests", type=Path)
     compare.add_argument("--config", type=Path)
     compare.add_argument("--stage", default="all")
-    compare.add_argument("--phase", type=int, choices=(1, 2), default=2)
+    compare.add_argument("--phase", type=int, choices=(1, 2, 3), default=3)
     compare.add_argument("--quick", action="store_true")
     compare.add_argument("--inputs", type=Path, default=Path("data/generated"))
     compare.add_argument("--workers", type=int, default=8)

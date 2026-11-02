@@ -47,6 +47,10 @@ EXPRESS_OWN_LIMIT = (
     "6car-60floor-6cap",
     "6car-60floor-6cap-express",
 )
+# Phase 3 (M32). The owner's reference case, and the buildings the owner chose at Gate 2 for later
+# phases. The overlap layout runs on the reference case's passengers.
+BEHAVIOUR_OWN_LIMIT = ("3car-10floor-6cap", "3car-60floor-6cap")
+BEHAVIOUR_SHARED = {"3car-60floor-6cap-overlap": "3car-60floor-6cap"}
 # Seeds keep the name each case first had, so renaming a case changes no request (M27).
 _FIRST_NAMES = {
     "1car-10floor-6cap": "simple",

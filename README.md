@@ -2,7 +2,7 @@
 
 A discrete-time Python simulation of a destination-dispatch elevator system. A passenger gives their origin and destination when they make a request, and the system immediately assigns them to one car. The project compares dispatch algorithms under simulated traffic.
 
-> **Status: first version (MVP).** This version has five algorithms, normal elevators and one seat behaviour (`min_time`). Express elevators, other seat behaviours and protection against long waits are not built yet, so **all results so far are interim and unguarded**: every passenger is served, but a long ride can be skipped repeatedly.
+> **Status: work in progress.** This version has six algorithms, normal and express elevators, and three seat behaviours. Protection against long waits is not built yet, so **results so far are interim**, and all except `strict` are unguarded: every passenger is served, but a long ride can be skipped repeatedly.
 
 The software presents statistics and charts, and never ranks results or names a winner. A person reads them and decides.
 
@@ -27,7 +27,7 @@ The PDF sample reaches floor 51, so it needs its own config. With the default 10
 python -m elevator_sim run --requests examples/pdf_sample.csv --config configs/pdf_sample.toml --out results/sample
 ```
 
-`run` writes `positions.csv` (every car's floor at every tick), `passengers.csv` and `summary.json`, and prints the summary. It also accepts `--floors`, `--elevators`, `--capacity`, `--algorithm`, `--behaviour` and `--max-ticks`.
+`run` writes `positions.csv` (every car's floor at every tick), `passengers.csv` and `summary.json`, and prints the summary. It also accepts `--floors`, `--elevators`, `--capacity`, `--algorithm`, `--behaviour`, `--weight` and `--max-ticks`.
 
 Simulated inputs:
 
@@ -40,11 +40,11 @@ Compare algorithms on one file, or run the whole suite:
 
 ```powershell
 python -m elevator_sim compare --requests data/one.csv --config configs/3car-10floor-6cap.toml --out results/one
-python -m elevator_sim compare --suite --out results/phase2
-python -m elevator_sim charts --stats results/phase2 --out results/phase2/charts
+python -m elevator_sim compare --suite --out results/phase3
+python -m elevator_sim charts --stats results/phase3 --out results/phase3/charts
 ```
 
-`compare --suite` runs the express suite, on five express layouts of `3car-60floor-6cap` and one of `6car-60floor-6cap`, each on the same passengers as the building it changes. `compare --suite --phase 1` runs the first suite: eight cases named after their buildings, each at four loads set from its own measured limit, and each on the same arrivals as `3car-60floor-6cap`.
+`compare --suite` runs every algorithm under every seat behaviour on `3car-10floor-6cap`, `3car-60floor-6cap` and `3car-60floor-6cap-overlap`. `--phase 1` and `--phase 2` run the earlier suites. Phase 1 has eight cases named after their buildings, each at four loads set from its own measured limit, and each on the same arrivals as `3car-60floor-6cap`. Phase 2 has five express layouts of `3car-60floor-6cap` and one of `6car-60floor-6cap`, each on the same passengers as the building it changes.
 
 To measure how much traffic a layout can carry under another algorithm, add `--algorithm` to `generate --calibrate`, with `--out` naming a separate file. The rates in `configs/load_rates.toml` are measured with `marginal_insertion`.
 
@@ -64,6 +64,16 @@ Every algorithm only chooses a car. All cars move by the same rule, LOOK: a car 
 | `rush_express` | As `marginal_insertion`, except that in a lobby rush one car serves every floor, one the low floors and one the high floors. A rush is when 70% of the last 30 requests came from the lobby |
 
 Stops take no time in this model, so an express car saves nothing by skipping a floor. Express cars, set with `[[express]]` tables in a config file, can only help by separating traffic.
+
+## Seat behaviours
+
+When a car stops and seats are short, the behaviour decides who boards.
+
+| Name | Who boards first |
+| --- | --- |
+| `strict` | The earliest request, and a seat is kept for any earlier passenger further along the car's sweep |
+| `min_time` | The shortest ride |
+| `weighted` | The highest (1 + weight × ticks waited ÷ floors) ÷ ride length. Weight 0 matches `min_time`. `marginal_insertion` and `rush_express` also count a delay for more the longer that passenger has waited |
 
 ## Tests
 
