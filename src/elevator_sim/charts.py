@@ -2,16 +2,18 @@
 
 Charts show each case against its own limit, so the fixed-load runs are left out of them. Most show
 one line per algorithm, so when several seat behaviours ran they use `min_time`. The fairness chart
-shows every behaviour and weight.
+shows every behaviour and weight. All of those draw Stage 1, and the anti-starvation chart draws
+Stage 2, which is `marginal_insertion` alone under each guard setting.
 
 The colours pass a colour-blindness check with every pair in play, as scatter charts need. Two of
 them have low contrast against the background, so report.md is the table view of every chart.
 """
 
 import csv
+import statistics
 from collections.abc import Iterable, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import matplotlib
 
@@ -51,12 +53,31 @@ SETTING_MARKERS = {
     "weighted 1": "D",
     "weighted 2": "v",
 }
+# Stage 2's guard settings in the order of spec section 13.3, keyed by their part of config_id.
+METHODS = {
+    "none": "none",
+    "skip_limit-1-hold": "S=1",
+    "skip_limit-2-hold": "S=2",
+    "skip_limit-3-hold": "S=3",
+    "wait_expiry-1rt-hold": "W=1",
+    "wait_expiry-2rt-hold": "W=2",
+    "wait_expiry-3rt-hold": "W=3",
+    "skip_limit-2-nohold": "S=2\noff",
+    "wait_expiry-2rt-nohold": "W=2\noff",
+}
+_STAGE_2_MEASURES = (
+    ("total_mean", "mean total time"),
+    ("wait_p95", "p95 wait"),
+    ("wait_max", "max wait"),
+    ("times_left_behind", "times left behind"),
+)
 TITLES = {
     "algorithm_comparison": "Mean total time per passenger, by algorithm",
     "distributions": "Wait and total time distributions, by algorithm",
     "fairness_vs_efficiency": "Fairness against efficiency, by algorithm",
     "load_response": "Mean total time as load rises, by algorithm",
     "car_movement": "Car movement over the first 200 ticks, by algorithm",
+    "anti_starvation": "Anti-starvation methods on marginal_insertion, by guard setting",
 }
 FONTS = ["Segoe UI", "DejaVu Sans"]
 FIXED_DISTANCE_NOTE = "Total time is wait time plus a fixed distance."
@@ -98,10 +119,16 @@ def _style_axes(axes: Axes) -> None:
     axes.tick_params(colors=_SECONDARY_INK, labelsize=8, length=0)
 
 
-def _figure(rows: int, columns: int, width: float, height: float) -> tuple[Figure, Any]:
+def _figure(
+    rows: int,
+    columns: int,
+    width: float,
+    height: float,
+    sharey: Literal["row"] | bool = "row",
+) -> tuple[Figure, Any]:
     plt.rcParams["font.family"] = FONTS
     figure, axes = plt.subplots(
-        rows, columns, figsize=(width, height), squeeze=False, sharey="row", facecolor=_SURFACE
+        rows, columns, figsize=(width, height), squeeze=False, sharey=sharey, facecolor=_SURFACE
     )
     for axis in axes.flat:
         _style_axes(axis)
@@ -120,13 +147,28 @@ def _finish(
     notes: Sequence[str],
     algorithms: Sequence[str],
     settings: Sequence[str] = (),
+    more_notes: Sequence[str] = (),
 ) -> None:
-    """Title and notes at the top left, with the legend below them."""
+    """Title and notes at the top left, with the legend below them.
+
+    `more_notes` go on a second line, for a chart whose notes don't fit on one.
+    """
     height = figure.get_figheight()
     figure.text(0.02, 1 - 0.14 / height, title, fontsize=13, weight="bold", color=_INK)
     figure.text(
         0.02, 1 - 0.36 / height, " ".join(notes), fontsize=9, color=_SECONDARY_INK, va="center"
     )
+    drop = 0.0
+    if more_notes:
+        drop = 0.18
+        figure.text(
+            0.02,
+            1 - 0.54 / height,
+            " ".join(more_notes),
+            fontsize=9,
+            color=_SECONDARY_INK,
+            va="center",
+        )
     handles = [
         Line2D(
             [],
@@ -143,7 +185,7 @@ def _finish(
         figure.legend(
             handles=handles,
             loc="upper left",
-            bbox_to_anchor=(0.015, 1 - 0.46 / height),
+            bbox_to_anchor=(0.015, 1 - (0.46 + drop) / height),
             ncols=len(handles),
             frameon=False,
             fontsize=9,
@@ -165,23 +207,28 @@ def _finish(
         figure.legend(
             handles=shapes,
             loc="upper left",
-            bbox_to_anchor=(0.015, 1 - 0.74 / height),
+            bbox_to_anchor=(0.015, 1 - (0.74 + drop) / height),
             ncols=len(shapes),
             frameon=False,
             fontsize=9,
             labelcolor=_SECONDARY_INK,
         )
-    figure.tight_layout(rect=(0, 0, 1, 1 - (1.05 if settings else 0.8) / height))
+    figure.tight_layout(rect=(0, 0, 1, 1 - ((1.05 if settings else 0.8) + drop) / height))
     figure.savefig(path, dpi=150, facecolor=_SURFACE, metadata={"Software": None})
     plt.close(figure)
 
 
-def _read_aggregates(stats: Path) -> list[dict[str, str]]:
-    path = stats / "aggregate_stats.csv"
+def _read_table(stats: Path, name: str) -> list[dict[str, str]]:
+    path = stats / name
     if not path.exists():
         raise ConfigError(f"no statistics found at {path}")
     with path.open(encoding="utf-8", newline="") as file:
         return list(csv.DictReader(file))
+
+
+def _stage(row: dict[str, str]) -> str:
+    """Folders from before Stage 2 have no stage in their aggregates, and are all Stage 1."""
+    return row.get("stage", "1")
 
 
 def _panel_label(axes: Axes, text: str) -> None:
@@ -505,13 +552,91 @@ def _car_movement(
     )
 
 
+def _method(row: dict[str, str]) -> str:
+    return row["config_id"].split("__")[2]
+
+
+def _pattern_means(
+    runs: Sequence[dict[str, str]], key: str
+) -> dict[tuple[str, str, str], list[float]]:
+    """Each seed's mean over the patterns, by setting, method and load."""
+    by_seed: dict[tuple[str, str, str, str], list[float]] = {}
+    for run in runs:
+        if run[key]:
+            group = (_setting(run), _method(run), run["load"], run["seed"])
+            by_seed.setdefault(group, []).append(float(run[key]))
+    means: dict[tuple[str, str, str], list[float]] = {}
+    for (setting, method, load, _), values in by_seed.items():
+        means.setdefault((setting, method, load), []).append(statistics.fmean(values))
+    return means
+
+
+def _anti_starvation(runs: Sequence[dict[str, str]], path: Path) -> None:
+    loads = _in_order((run["load"] for run in runs), list(LOADS))
+    settings = _in_order((_setting(run) for run in runs), list(SETTING_MARKERS))
+    methods = _in_order((_method(run) for run in runs), list(METHODS))
+    colour = COLOURS["marginal_insertion"]
+    width = max(4.0 * len(loads) + 0.6, _MIN_WIDTH)
+    rows = len(_STAGE_2_MEASURES)
+    figure, axes = _figure(rows, len(loads), width, 2.3 * rows + 1.3, sharey=False)
+    for row_index, (key, label) in enumerate(_STAGE_2_MEASURES):
+        means = _pattern_means(runs, key)
+        for column, load in enumerate(loads):
+            axis = axes[row_index][column]
+            _panel_label(axis, f"{label}, {load}")
+            axis.set_xlim(-0.6, len(methods) - 0.4)
+            axis.set_xticks(range(len(methods)), [METHODS.get(m, m) for m in methods], fontsize=7)
+            top = 0.0
+            for offset, setting in zip((-0.15, 0.15), settings, strict=False):
+                for place, method in enumerate(methods):
+                    values = means.get((setting, method, load))
+                    if not values:
+                        continue
+                    top = max(top, *values)
+                    x = place + offset
+                    axis.plot([x, x], [min(values), max(values)], color=colour, linewidth=1.5)
+                    axis.plot(
+                        x,
+                        statistics.fmean(values),
+                        marker=SETTING_MARKERS.get(setting, "o"),
+                        color=colour,
+                        markersize=6,
+                        markeredgecolor=_SURFACE,
+                        markeredgewidth=1,
+                    )
+            if not top:
+                _no_passengers(axis)
+            axis.set_ylim(0, top * 1.08 or 1.0)
+            axis.yaxis.set_major_formatter(_WHOLE_TICKS)
+        axes[row_index][0].set_ylabel(
+            "Count" if key == "times_left_behind" else "Ticks", fontsize=8, color=_SECONDARY_INK
+        )
+    _finish(
+        figure,
+        path,
+        TITLES["anti_starvation"],
+        [
+            "S: flagged after being left behind S times. W: flagged after waiting W round trips.",
+            "Off: seat hold off.",
+        ],
+        ["marginal_insertion"],
+        settings,
+        [
+            "Points are means over the patterns.",
+            "Lines show their range across seeds, which isn't a significance test.",
+            "Each panel has its own axis.",
+        ],
+    )
+
+
 def write_charts(stats: Path, out: Path) -> list[Path]:
     """Draw every chart from the same runs as the statistics, replacing any earlier charts.
 
     An incomplete comparison is refused, not drawn with gaps. Stalled runs tend to be the hardest
     ones, so a partial chart would flatter the algorithm that stalled.
     """
-    rows = [row for row in _read_aggregates(stats) if row["load_basis"] != FIXED]
+    aggregates = _read_table(stats, "aggregate_stats.csv")
+    rows = [row for row in aggregates if row["load_basis"] != FIXED and _stage(row) == "1"]
     manifest = read_manifest(stats)
     if manifest.not_finished:
         count = len(manifest.not_finished)
@@ -520,12 +645,16 @@ def write_charts(stats: Path, out: Path) -> list[Path]:
             f"charts need a complete comparison, but runs in {stats} didn't finish ({count} in "
             f"all, including {names}). See report.md"
         )
-    run_ids = manifest.runs
+    runs = _read_table(stats, "simulation_stats.csv")
+    stage_1 = {run["run_id"] for run in runs if run["stage"] == "1"}
+    run_ids = [run_id for run_id in manifest.runs if run_id in stage_1]
+    samples = [run_id for run_id in manifest.samples if run_id in stage_1]
+    stage_2 = [run for run in runs if run["stage"] == "2" and run["load_basis"] != FIXED]
     out.mkdir(parents=True, exist_ok=True)
     for name in TITLES:
         for earlier in out.glob(f"{name}_*.png"):
             earlier.unlink()
-    if not any(_has_passengers(row) for row in rows):
+    if not any(_has_passengers(row) for row in aggregates if row["load_basis"] != FIXED):
         return []
     written = []
     behaviour = "min_time" if len({_setting(row) for row in rows}) > 1 else None
@@ -544,7 +673,11 @@ def write_charts(stats: Path, out: Path) -> list[Path]:
         _distributions(stats, run_ids, building, target, behaviour)
         written.append(target)
         target = out / f"car_movement_{building}.png"
-        _car_movement(stats, manifest.samples, building, target, behaviour)
+        _car_movement(stats, samples, building, target, behaviour)
         if target.exists():
             written.append(target)
+    for building in dict.fromkeys(run["building"] for run in stage_2):
+        target = out / f"anti_starvation_{building}.png"
+        _anti_starvation([run for run in stage_2 if run["building"] == building], target)
+        written.append(target)
     return written

@@ -474,3 +474,67 @@ def test_wait_and_total_charts_are_labelled_as_differing_by_a_fixed_distance() -
     from elevator_sim.charts import FIXED_DISTANCE_NOTE
 
     assert "fixed" in FIXED_DISTANCE_NOTE
+
+
+def test_tst17_stage_2_adds_the_anti_starvation_chart_and_changes_no_other(
+    tmp_path: Path,
+) -> None:
+    from elevator_sim.experiment import GuardSetting
+
+    file = write_input(tmp_path, "input.csv", SIX_ROWS)
+    stage_1 = [
+        Task(f"{config_id(c)}_run", c, 1, "custom", "uniform", "heavy", 1, file)
+        for c in (SimConfig(algorithm=name) for name in ALGORITHMS)
+    ]
+    methods = (
+        GuardSetting("none"),
+        GuardSetting("skip_limit", skip_limit=1),
+        GuardSetting("wait_expiry", wait_limit="1rt", seat_hold=False),
+    )
+    configs = [
+        method.apply(SimConfig(behaviour=behaviour, fairness_weight=weight))
+        for behaviour, weight in (("min_time", None), ("weighted", 1.0))
+        for method in methods
+    ]
+    stage_2 = [
+        Task(f"{config_id(c)}_run", c, 2, "custom", "uniform", "heavy", 1, file) for c in configs
+    ]
+    run_suite(stage_1, tmp_path / "one", workers=1)
+    run_suite(stage_1 + stage_2, tmp_path / "both", workers=1)
+
+    assert draw(tmp_path / "one", tmp_path / "one_charts") == 0
+    assert draw(tmp_path / "both", tmp_path / "both_charts") == 0
+
+    alone = sorted(path.name for path in (tmp_path / "one_charts").glob("*.png"))
+    together = sorted(path.name for path in (tmp_path / "both_charts").glob("*.png"))
+    assert together == sorted([*alone, "anti_starvation_custom.png"])
+    for name in alone:
+        assert (tmp_path / "both_charts" / name).read_bytes() == (
+            tmp_path / "one_charts" / name
+        ).read_bytes()
+
+
+def test_tst18_the_anti_starvation_chart_keeps_the_spec_order_of_methods() -> None:
+    from elevator_sim.charts import METHODS
+    from elevator_sim.experiment import STAGE_2_GUARDS
+
+    expected = [config_id(setting.apply(SimConfig())).split("__")[2] for setting in STAGE_2_GUARDS]
+    assert list(METHODS) == expected
+    assert len(set(METHODS.values())) == len(METHODS)
+
+
+def test_tst17_a_stage_2_comparison_alone_draws_the_anti_starvation_chart(tmp_path: Path) -> None:
+    from elevator_sim.experiment import GuardSetting
+
+    file = write_input(tmp_path, "input.csv", SIX_ROWS)
+    configs = [GuardSetting("none").apply(SimConfig()), SimConfig()]
+    tasks = [
+        Task(f"{config_id(c)}_run", c, 2, "custom", "lunch", "heavy", 1, file) for c in configs
+    ]
+    run_suite(tasks, tmp_path / "out", workers=1)
+
+    assert draw(tmp_path / "out", tmp_path / "charts") == 0
+
+    assert [path.name for path in (tmp_path / "charts").glob("*.png")] == [
+        "anti_starvation_custom.png"
+    ]
