@@ -15,18 +15,20 @@ BEHAVIOURS = ("strict", "min_time", "weighted")
 DEFAULT_WEIGHT = 1.0
 GUARDS = ("none", "skip_limit", "wait_expiry")
 
-# Settings the design defines but this phase doesn't build. Accepting them silently would let a
-# reader believe a guard was active when it wasn't (M12).
-_LATER_SETTINGS = {
-    "guard": 4,
-    "skip_limit": 4,
-    "wait_limit": 4,
-    "seat_hold": 4,
-    "assignment_rule": 5,
-}
+# Settings the design defines but this version doesn't build. Accepting them silently would let a
+# reader believe a rule was active when it wasn't (M12).
+_NOT_BUILT = {"assignment_rule"}
 
 _BUILDING_KEYS = {"floors", "elevators", "capacity", "start_floor"}
-_DISPATCH_KEYS = {"algorithm", "behaviour", "fairness_weight"}
+_DISPATCH_KEYS = {
+    "algorithm",
+    "behaviour",
+    "fairness_weight",
+    "guard",
+    "skip_limit",
+    "wait_limit",
+    "seat_hold",
+}
 _EXPRESS_KEYS = {"car", "serves"}
 _INTEGER_KEYS = ("floors", "elevators", "capacity", "start_floor")
 
@@ -196,27 +198,46 @@ class SimConfig:
                     raise ConfigError(f"no car serves both floors {low} and {high} (B8)")
 
 
+def guard_value(config: SimConfig) -> int | str | None:
+    """The limit of the guard in force, as it was set: S, or W in ticks or round trips."""
+    guard = config.guard_in_force
+    if guard == "skip_limit":
+        return config.skip_limit
+    if guard == "wait_expiry":
+        return config.wait_limit
+    return None
+
+
+def holds_seats(config: SimConfig) -> bool:
+    """Seat hold keeps seats only for flagged passengers, so with no guard it does nothing."""
+    return config.seat_hold and config.guard_in_force != "none"
+
+
 def config_id(config: SimConfig) -> str:
     """A readable id with four stable parts: algorithm, behaviour, guard and assignment rule."""
     behaviour = config.behaviour
     if behaviour == "weighted":
         behaviour = f"weighted-{config.weight:g}"
-    return f"{config.algorithm}__{behaviour}__none__none"
+    guard = config.guard_in_force
+    if guard != "none":
+        guard = f"{guard}-{guard_value(config)}-{'hold' if config.seat_hold else 'nohold'}"
+    return f"{config.algorithm}__{behaviour}__{guard}__none"
 
 
-def settings_record(config: SimConfig) -> dict[str, str | float | bool | None]:
-    """All dispatch settings by name. Fields for later phases hold their off value."""
+def settings_record(config: SimConfig) -> dict[str, str | int | float | bool | None]:
+    """All dispatch settings by name. Assignment rules aren't built, so hold their off value."""
+    guard = config.guard_in_force
     return {
         "algorithm": config.algorithm,
         "behaviour": config.behaviour,
         "fairness_weight": config.weight if config.behaviour == "weighted" else None,
-        "guard": "none",
-        "guard_value": None,
-        "seat_hold": False,
+        "guard": guard,
+        "guard_value": guard_value(config),
+        "seat_hold": holds_seats(config),
         "assignment_rule": "none",
         "rule_value": None,
         # Strict meets "no passenger waits forever" by itself, so it needs no guard (D24).
-        "unguarded": config.behaviour != "strict",
+        "unguarded": guard == "none" and config.behaviour != "strict",
     }
 
 
@@ -225,8 +246,8 @@ def _read_section(data: dict[str, Any], name: str, allowed: set[str]) -> dict[st
     if not isinstance(section, dict):
         raise ConfigError(f"{name} must be a [{name}] section, not {section!r}")
     for key in section:
-        if key in _LATER_SETTINGS:
-            raise ConfigError(f"setting {key!r} arrives in Phase {_LATER_SETTINGS[key]}")
+        if key in _NOT_BUILT:
+            raise ConfigError(f"setting {key!r} isn't built in this version")
         if key not in allowed:
             raise ConfigError(f"unknown setting {key!r} in [{name}]")
     return section

@@ -131,19 +131,24 @@ def test_tst12_rejects_a_missing_file(tmp_path: Path) -> None:
         load_config(tmp_path / "absent.toml")
 
 
+def test_m12_assignment_rules_are_refused_because_they_are_not_built(tmp_path: Path) -> None:
+    with pytest.raises(ConfigError, match=r"assignment_rule.*isn't built"):
+        load_config(write_toml(tmp_path, '[dispatch]\nassignment_rule = "none"\n'))
+
+
 @pytest.mark.parametrize(
-    ("toml", "phase"),
+    ("toml", "expected"),
     [
-        ('[dispatch]\nguard = "skip_limit"\n', "Phase 4"),
-        ("[dispatch]\nskip_limit = 2\n", "Phase 4"),
-        ('[dispatch]\nwait_limit = "2rt"\n', "Phase 4"),
-        ("[dispatch]\nseat_hold = true\n", "Phase 4"),
-        ('[dispatch]\nassignment_rule = "none"\n', "Phase 5"),
+        (
+            'guard = "wait_expiry"\nskip_limit = 3\nwait_limit = "3rt"\nseat_hold = false\n',
+            SimConfig(guard="wait_expiry", skip_limit=3, wait_limit="3rt", seat_hold=False),
+        ),
+        ('guard = "wait_expiry"\nwait_limit = 36\n', SimConfig(guard="wait_expiry", wait_limit=36)),
+        ('guard = "none"\n', SimConfig(guard="none")),
     ],
 )
-def test_m12_settings_from_later_phases_are_rejected(tmp_path: Path, toml: str, phase: str) -> None:
-    with pytest.raises(ConfigError, match=phase):
-        load_config(write_toml(tmp_path, toml))
+def test_tst12_reads_guard_settings(tmp_path: Path, toml: str, expected: SimConfig) -> None:
+    assert load_config(write_toml(tmp_path, f"[dispatch]\n{toml}")) == expected
 
 
 def test_tst12_reads_express_cars_from_the_file(tmp_path: Path) -> None:
@@ -248,6 +253,57 @@ def test_tst12_rejects_a_bad_weight(weight: object) -> None:
 
 
 @pytest.mark.parametrize(
+    ("settings", "expected"),
+    [
+        (
+            {"behaviour": "weighted", "guard": "skip_limit"},
+            "marginal_insertion__weighted-1__skip_limit-2-hold__none",
+        ),
+        (
+            {"guard": "skip_limit", "skip_limit": 3, "seat_hold": False},
+            "marginal_insertion__min_time__skip_limit-3-nohold__none",
+        ),
+        ({"guard": "wait_expiry"}, "marginal_insertion__min_time__wait_expiry-2rt-hold__none"),
+        (
+            {"guard": "wait_expiry", "wait_limit": 36},
+            "marginal_insertion__min_time__wait_expiry-36-hold__none",
+        ),
+        ({"guard": "none"}, "marginal_insertion__min_time__none__none"),
+        ({"behaviour": "strict", "guard": "skip_limit"}, "marginal_insertion__strict__none__none"),
+    ],
+)
+def test_tst16_the_config_id_names_the_guard_in_force(
+    settings: dict[str, object], expected: str
+) -> None:
+    assert config_id(SimConfig(**settings)) == expected  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    ("settings", "expected"),
+    [
+        ({"guard": "skip_limit"}, ("skip_limit", 2, True, False)),
+        ({"guard": "skip_limit", "seat_hold": False}, ("skip_limit", 2, False, False)),
+        ({"guard": "wait_expiry"}, ("wait_expiry", "2rt", True, False)),
+        ({"guard": "wait_expiry", "wait_limit": 36}, ("wait_expiry", 36, True, False)),
+        # Without flags, seat hold keeps nothing, so it isn't recorded as on.
+        ({"guard": "none"}, ("none", None, False, True)),
+        ({"behaviour": "strict", "guard": "skip_limit"}, ("none", None, False, False)),
+    ],
+)
+def test_tst16_outputs_record_the_guard_in_force(
+    settings: dict[str, object], expected: tuple[object, ...]
+) -> None:
+    record = settings_record(SimConfig(**settings))  # type: ignore[arg-type]
+
+    assert (
+        record["guard"],
+        record["guard_value"],
+        record["seat_hold"],
+        record["unguarded"],
+    ) == expected
+
+
+@pytest.mark.parametrize(
     ("behaviour", "weight", "expected"),
     [
         ("min_time", None, "eta__min_time__none__none"),
@@ -260,15 +316,15 @@ def test_tst12_rejects_a_bad_weight(weight: object) -> None:
 def test_tst16_the_config_id_names_the_behaviour_and_weight(
     behaviour: str, weight: float | None, expected: str
 ) -> None:
-    config = SimConfig(algorithm="eta", behaviour=behaviour, fairness_weight=weight)
+    config = SimConfig(algorithm="eta", behaviour=behaviour, fairness_weight=weight, guard="none")
 
     assert config_id(config) == expected
 
 
 def test_d24_strict_is_the_one_behaviour_not_labelled_unguarded() -> None:
     strict = settings_record(SimConfig(behaviour="strict"))
-    weighted = settings_record(SimConfig(behaviour="weighted", fairness_weight=2.0))
-    plain = settings_record(SimConfig())
+    weighted = settings_record(SimConfig(behaviour="weighted", fairness_weight=2.0, guard="none"))
+    plain = settings_record(SimConfig(guard="none"))
 
     assert (strict["unguarded"], strict["guard"]) == (False, "none")
     assert (weighted["unguarded"], weighted["fairness_weight"]) == (True, 2.0)

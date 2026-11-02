@@ -34,6 +34,11 @@ EXIT_INVALID = 2
 EXIT_STALLED = 3
 
 
+def _wait_limit(text: str) -> int | str:
+    """Ticks, such as 36, or round trips, such as 2rt."""
+    return int(text) if text.isdigit() else text
+
+
 def _config_from(args: argparse.Namespace) -> SimConfig:
     config = load_config(args.config) if args.config else SimConfig()
     overrides = {
@@ -46,6 +51,10 @@ def _config_from(args: argparse.Namespace) -> SimConfig:
             "behaviour",
             "max_ticks",
             "fairness_weight",
+            "guard",
+            "skip_limit",
+            "wait_limit",
+            "seat_hold",
         )
         if (value := getattr(args, name, None)) is not None
     }
@@ -130,6 +139,10 @@ def _parser() -> argparse.ArgumentParser:
     run.add_argument("--algorithm")
     run.add_argument("--behaviour")
     run.add_argument("--weight", dest="fairness_weight", type=float)
+    run.add_argument("--guard")
+    run.add_argument("--skip-limit", dest="skip_limit", type=int)
+    run.add_argument("--wait-limit", dest="wait_limit", type=_wait_limit)
+    run.add_argument("--seat-hold", dest="seat_hold", action=argparse.BooleanOptionalAction)
     run.add_argument("--max-ticks", dest="max_ticks", type=int)
     run.set_defaults(handler=_run)
 

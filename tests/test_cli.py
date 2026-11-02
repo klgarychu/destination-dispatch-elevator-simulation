@@ -129,9 +129,9 @@ def test_tst17_reaching_max_ticks_exits_3(
     assert "stalled" in capsys.readouterr().err
 
 
-def test_m12_flags_from_later_phases_exit_2(tmp_path: Path) -> None:
+def test_m12_flags_for_assignment_rules_exit_2(tmp_path: Path) -> None:
     with pytest.raises(SystemExit) as caught:
-        main(["run", "--requests", SAMPLE, "--out", str(tmp_path), "--guard", "1"])
+        main(["run", "--requests", SAMPLE, "--out", str(tmp_path), "--assignment-rule", "x"])
 
     assert caught.value.code == 2
 
@@ -157,6 +157,40 @@ def test_tst17_run_accepts_a_weight_for_weighted(tmp_path: Path) -> None:
     assert run_sample(tmp_path, "--behaviour", "weighted", "--weight", "0.5") == 0
 
     assert saved_settings(tmp_path)["fairness_weight"] == 0.5
+
+
+@pytest.mark.parametrize(
+    ("options", "expected"),
+    [
+        (["--guard", "skip_limit", "--skip-limit", "3"], ("skip_limit", 3, True)),
+        (["--guard", "skip_limit", "--no-seat-hold"], ("skip_limit", 2, False)),
+        (["--guard", "wait_expiry", "--wait-limit", "3rt"], ("wait_expiry", "3rt", True)),
+        (["--guard", "wait_expiry", "--wait-limit", "36"], ("wait_expiry", 36, True)),
+        (["--guard", "none"], ("none", None, False)),
+    ],
+)
+def test_tst17_run_accepts_guard_settings(
+    tmp_path: Path, options: list[str], expected: tuple[object, ...]
+) -> None:
+    assert run_sample(tmp_path, *options) == 0
+
+    settings = saved_settings(tmp_path)
+    assert (settings["guard"], settings["guard_value"], settings["seat_hold"]) == expected
+
+
+@pytest.mark.parametrize(
+    ("options", "named"),
+    [
+        (["--guard", "max_skips"], "unknown guard"),
+        (["--guard", "skip_limit", "--skip-limit", "0"], "skip_limit"),
+        (["--guard", "wait_expiry", "--wait-limit", "2 trips"], "wait_limit"),
+    ],
+)
+def test_tst17_a_bad_guard_setting_exits_2(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], options: list[str], named: str
+) -> None:
+    assert run_sample(tmp_path, *options) == 2
+    assert named in capsys.readouterr().err
 
 
 def test_m12_a_weight_that_would_do_nothing_exits_2(
