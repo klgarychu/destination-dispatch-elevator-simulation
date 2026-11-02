@@ -1,0 +1,45 @@
+{
+  "config": {
+    "algorithm": "marginal_insertion",
+    "behaviour": "weighted",
+    "fairness_weight": 1.0,
+    "guard": "wait_expiry",
+    "guard_value": "2rt",
+    "seat_hold": true,
+    "assignment_rule": "none",
+    "rule_value": null,
+    "unguarded": false
+  },
+  "building": {
+    "floors": 60,
+    "elevators": 3,
+    "capacity": 6,
+    "express_cars": [
+      2,
+      3
+    ]
+  },
+  "passengers": 669,
+  "ticks": 1582,
+  "wait_time": {
+    "min": 0,
+    "mean": 208.92,
+    "max": 564,
+    "p95": 440,
+    "stdev": 147.27
+  },
+  "total_time": {
+    "min": 7,
+    "mean": 236.47,
+    "max": 589,
+    "p95": 474,
+    "stdev": 153.07
+  },
+  "observations": [
+    "Longest wait: p000631 at 564 ticks",
+    "Busiest source floor: 1 with 276 passengers",
+    "Peak passengers waiting: 187",
+    "Share with zero wait: 0.1%",
+    "Times left behind: 1158"
+  ]
+}

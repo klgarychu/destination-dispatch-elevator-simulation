@@ -1,3 +1,4 @@
 # Golden outputs are compared byte for byte, so line endings must not change on checkout.
 * text=auto eol=lf
 *.png binary
+*.pdf binary

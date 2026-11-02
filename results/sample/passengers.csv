@@ -1,0 +1,4 @@
+id,time,source,dest,elevator,board_time,dropoff_time,wait_time,travel_time,total_time,times_left_behind
+passenger1,0,1,51,1,0,50,0,50,50,0
+passenger2,0,1,37,1,0,36,0,36,36,0
+passenger3,10,20,1,1,81,100,71,19,90,0

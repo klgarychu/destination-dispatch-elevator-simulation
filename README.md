@@ -2,7 +2,7 @@
 
 A discrete-time Python simulation of a destination-dispatch elevator system. A passenger gives their origin and destination when they make a request, and the system immediately assigns them to one car. The project compares six dispatch algorithms, three seat behaviours and two guards against long waits, under simulated traffic.
 
-The software presents statistics and charts in a fixed order, and never ranks results or names a winner. A person reads them and decides. The author's conclusion is in [Conclusion](#conclusion).
+The software presents statistics and charts in a fixed order, and never ranks results or names a winner. A person reads them and decides. The author's conclusion is in [Conclusion](#conclusion), and the final presentation is [results/final_presentation.pdf](results/final_presentation.pdf).
 
 ## Requirements
 
@@ -33,7 +33,7 @@ python -m elevator_sim run --requests examples/pdf_sample.csv --config configs/p
 | `passengers.csv` | Each passenger's car, board and drop-off ticks, wait, travel and total time, and times left behind |
 | `summary.json` | The settings, and the minimum, mean, maximum, p95 and standard deviation of wait and total time |
 
-Exit codes are 0 for success, 2 for invalid input or settings, and 3 for reaching `max_ticks`. Errors go to stderr, with every bad input row listed.
+The output for the sample is in [results/sample/](results/sample/). Exit codes are 0 for success, 2 for invalid input or settings, and 3 for reaching `max_ticks`. Errors go to stderr, with every bad input row listed.
 
 ## Your own building and settings
 
@@ -106,11 +106,25 @@ python -m elevator_sim charts --stats results/express --out results/express/char
 - **`--phase 2`** runs five express layouts of `3car-60floor-6cap`, and one of `6car-60floor-6cap`, each on the same passengers as the building it changes.
 - **`--guard skip_limit`** runs those case studies with the default guard. Without it they run with no guard, as they did when first built.
 
-Each folder gets `simulation_stats.csv` (one row per run), `aggregate_stats.csv` (the mean, minimum and maximum across seeds), `report.md` (summary tables) and the charts. It also gets full logs for two sample inputs per building in `samples/`. A restarted `compare` reuses saved runs whose input, settings and code are unchanged. The same input and settings give byte-identical files on the same Python version and operating system.
+Each folder gets:
+
+| File | Contents |
+| --- | --- |
+| `simulation_stats.csv` | One row per run: its settings, and the minimum, mean, maximum, p95 and standard deviation of wait and total time, with fairness measures |
+| `aggregate_stats.csv` | The mean, minimum and maximum across seeds of each configuration |
+| `by_config/` | Each configuration's rows of `simulation_stats.csv` |
+| `samples/` | Full logs for every configuration on two inputs per building, `up_peak` at heavy traffic and `lunch` in overload, on seed 1: `positions.csv`, `passengers.csv` and `summary.json`, as `run` writes them |
+| `report.md` | Summary tables, a table view of the charts |
+| `charts/` | The charts |
+| `suite_log.csv` | Each run's time in seconds |
+
+A restarted `compare` reuses saved runs whose input, settings and code are unchanged. The same input and settings give byte-identical files on the same Python version and operating system, except `suite_log.csv`.
 
 On the development PC, a Windows 11 machine with 16 logical processors, with 8 workers and nothing else running: the main experiment takes about 50 minutes, the eight buildings about 9, and the express layouts about 13. `--workers` sets the number of processes.
 
-The charts are in [results/charts/](results/charts/), [results/cases/charts/](results/cases/charts/) and [results/express/charts/](results/express/charts/), with each folder's `report.md` beside them as a table view.
+### Results in this repository
+
+The final results are published in [results/](results/), [results/cases/](results/cases/) and [results/express/](results/express/), with every file in the table above. Two kinds of file stay out: the saved runs in `runs/` and their `run_manifest.json`, which only let an interrupted suite carry on, and the inputs in `data/generated/`, which `generate --suite` reproduces. The final presentation is [results/final_presentation.pdf](results/final_presentation.pdf).
 
 ## How the simulation works
 

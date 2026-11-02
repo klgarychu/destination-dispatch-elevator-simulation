@@ -14,17 +14,30 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 
-# Generated inputs and run data. Of the results, only the charts and each report.md, their table
-# view, are published. Every other file is reproduced by the commands in the README.
+# Generated inputs and run data. The final results are published: the sample run, statistics,
+# logs, reports, charts and the presentation. The saved runs in runs/ and their manifest only let
+# an interrupted suite carry on, and `generate --suite` reproduces the inputs, so they stay local,
+# as do other runs' folders.
 data/generated/
 results/*
-!results/charts/
+!results/final_presentation.pdf
+!results/sample/
+!results/*.csv
 !results/report.md
+!results/by_config/
+!results/charts/
+!results/samples/
 !results/cases/
 !results/express/
 results/cases/*
 results/express/*
-!results/cases/charts/
+!results/cases/*.csv
 !results/cases/report.md
-!results/express/charts/
+!results/cases/by_config/
+!results/cases/charts/
+!results/cases/samples/
+!results/express/*.csv
 !results/express/report.md
+!results/express/by_config/
+!results/express/charts/
+!results/express/samples/
