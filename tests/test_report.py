@@ -133,6 +133,13 @@ def test_m30_express_cases_are_listed_after_the_phase_1_cases() -> None:
     assert report.index("## 3car-10floor-6cap,") < report.index("## 3car-60floor-6cap-split30,")
 
 
+def test_review_15_the_report_calls_the_seed_range_descriptive_not_a_test() -> None:
+    report = render_report([row("eta", 10.0)])
+
+    assert "noise" not in report
+    assert "isn't a significance test" in report
+
+
 def test_report_gives_the_mean_and_the_spread_across_seeds() -> None:
     report = render_report([row("eta", 10.0, seed=1), row("eta", 14.0, seed=2)])
 

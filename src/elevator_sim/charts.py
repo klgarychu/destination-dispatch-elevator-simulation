@@ -51,7 +51,7 @@ TITLES = {
 }
 FONTS = ["Segoe UI", "DejaVu Sans"]
 FIXED_DISTANCE_NOTE = "Total time is wait time plus a fixed distance."
-_SPREAD_NOTE = "Lines show the range across seeds. Gaps smaller than that range are noise."
+SPREAD_NOTE = "Lines show the range across seeds, which isn't a significance test."
 
 _SURFACE = "#fcfcfb"
 _INK = "#0b0b0b"
@@ -221,7 +221,7 @@ def _algorithm_comparison(rows: Sequence[dict[str, str]], path: Path) -> None:
         figure,
         path,
         TITLES["algorithm_comparison"],
-        [FIXED_DISTANCE_NOTE, _SPREAD_NOTE, "Each row shares an axis."],
+        [FIXED_DISTANCE_NOTE, SPREAD_NOTE, "Each row shares an axis."],
         algorithms,
     )
 
@@ -363,7 +363,7 @@ def _fairness_vs_efficiency(rows: Sequence[dict[str, str]], path: Path) -> None:
         figure,
         path,
         TITLES["fairness_vs_efficiency"],
-        ["Further left is less total time, and lower down is a shorter long wait.", _SPREAD_NOTE],
+        ["Further left is less total time, and lower down is a shorter long wait.", SPREAD_NOTE],
         algorithms,
     )
 

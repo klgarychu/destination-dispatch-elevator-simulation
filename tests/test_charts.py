@@ -395,6 +395,13 @@ def test_tst18_titles_notes_and_legends_fit_a_chart_of_one_input(
     plt.close("all")
 
 
+def test_review_15_chart_notes_call_the_seed_range_descriptive_not_a_test() -> None:
+    from elevator_sim.charts import SPREAD_NOTE
+
+    assert "noise" not in SPREAD_NOTE
+    assert "isn't a significance test" in SPREAD_NOTE
+
+
 def test_tst18_each_algorithm_has_one_distinct_colour_and_marker() -> None:
     from elevator_sim.charts import COLOURS, MARKERS
 

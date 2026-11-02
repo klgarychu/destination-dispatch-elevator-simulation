@@ -100,7 +100,8 @@ def render_report(rows: Sequence[dict[str, Any]], not_finished: Sequence[str] = 
         "a person reads the tables and charts and decides.",
         "",
         "Each cell shows the mean across seeds, then the range across seeds in brackets. "
-        "Differences smaller than that range are noise.",
+        "That range describes spread and isn't a significance test: configurations run the same "
+        "inputs, so compare them seed by seed.",
         "",
         "Total time is wait time plus a fixed distance, so differences in mean total time are "
         "exactly the differences in mean wait time.",
