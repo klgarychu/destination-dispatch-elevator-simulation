@@ -36,7 +36,7 @@ Every phase ends the same way: tests pass, a simulation produces statistics, cha
 6. **Never rank.** Reports, charts and phase reviews show statistics in fixed order, with no rank, winner, "best" label or highlight of the lowest value (R-31).
 7. **Record assumptions.** Add anything new to `assumptions_made.md`, and list it in the phase review.
 8. **Agree any cut.** Dropping scope, seeds or test values needs the approver's agreement (G17).
-9. **Don't change the interpreter mid-project.** Stay on Python 3.15.2, because byte-identical results depend on it (C27).
+9. **Don't change the interpreter mid-project.** Stay on Python 3.15.2, because byte-identical results depend on it (C27). After Gate 6 the minimum to install and run is 3.14 (M44), and reproducing the final results byte for byte still needs 3.15.2.
 10. **Commit as you go.** Commit each finished piece of work to `main` with a clear message, at least once per work package, so the history shows how the project was built. The whole history is published when the owner pushes, so never commit secrets or anything `.gitignore` keeps local, such as `docs/` and the review files in `project_docs/` (M14, M42).
 
 ## 3. What every phase produces
@@ -525,6 +525,8 @@ Every gate is decided, so no phase is unlocked. Work now comes only from the own
 | 2026-11-02 | Link the final presentation from the top of the README | Owner's request | `0393f52` |
 | 2026-11-03 | Reconcile `intent.md`, the spec, this plan, the research report, the decision log, `AGENTS.md` and `CLAUDE.md` with the decisions and the code, after a review of them. The spec marks six agreed rules the code doesn't meet as Open (spec section 16.5). No code, test or result changed | M41 | `baffcd3` |
 | 2026-11-03 | Publish `AGENTS.md`, `CLAUDE.md` and the five core documents in `project_docs/`, committed locally for the owner to check before pushing | M42 | `baffcd3` |
-| 2026-11-03 | Rename `sdlc/` to `project_docs/` | M43 | The commit that adds this row |
+| 2026-11-03 | Rename `sdlc/` to `project_docs/` | M43 | `21fe6b6` |
+| 2026-11-03 | Lower the minimum to Python 3.14, in `pyproject.toml`, the packaging test, the README and `CLAUDE.md` | M44 | The commit that adds this row |
+| 2026-11-03 | README: add PowerShell activation of the virtual environment to Install, with the execution-policy fix, rename two sections, and introduce the reproduction commands | Owner's request | The commit that adds this row |
 
 The open items are the owner's: push the rename commit (M43), make the repo public (R-34), check the company's rules on AI use (C25), and decide whether to fix C29 to C34 (PC24).

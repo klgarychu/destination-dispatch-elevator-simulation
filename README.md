@@ -11,16 +11,31 @@ The software presents statistics and charts in a fixed order, and never ranks re
 
 ## Requirements
 
-**Python 3.15 or later.** The simulator uses only the standard library. Charts need `matplotlib`, and the tests need `pytest`, `hypothesis`, `ruff` and `mypy`. It was built and tested on Windows 11. Other systems weren't tried.
+**Python 3.14 or later.** The simulator uses only the standard library. Charts need `matplotlib`, and the tests need `pytest`, `hypothesis`, `ruff` and `mypy`. It was built and tested on Windows 11. Other systems weren't tried. The published results were produced with Python 3.15.2.
 
 ## Install
 
+`py -m venv .venv` uses the newest Python installed. `py -0` lists them.
+
 ```powershell
-py -3.15 -m venv .venv
+py -m venv .venv
 .venv\Scripts\python.exe -m pip install -e ".[dev,charts]"
 ```
 
-Run the commands below from the project root, with the virtual environment's Python. They are shown as `python -m elevator_sim`.
+Run the commands below from the project root, with the virtual environment's Python. They are shown as `python -m elevator_sim`. In each new PowerShell terminal, activate the virtual environment so that `python` runs its interpreter:
+
+```powershell
+.venv\Scripts\Activate.ps1
+```
+
+If PowerShell says that running scripts is disabled on this system, allow them for this terminal only, then activate again:
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned
+.venv\Scripts\Activate.ps1
+```
+
+If `python -m elevator_sim` reports `No module named elevator_sim`, the virtual environment isn't active. Instead of activating it, you can also call `.venv\Scripts\python.exe -m elevator_sim`.
 
 ## Quick start: the sample from the assignment
 
@@ -40,7 +55,7 @@ python -m elevator_sim run --requests examples/pdf_sample.csv --config configs/p
 
 The output for the sample is in [results/sample/](results/sample/). Exit codes are 0 for success, 2 for invalid input or settings, and 3 for reaching `max_ticks`. Errors go to stderr, with every bad input row listed.
 
-## Your own building and settings
+## Run simulations for your own building and settings
 
 **1. Describe the building in a TOML file.** Anything left out takes its default.
 
@@ -90,7 +105,9 @@ python -m elevator_sim charts --stats results/my_compare --out results/my_compar
 
 To find how much traffic a building can carry, run `generate --calibrate --config my_building.toml --out my_rates.toml`. It can take tens of minutes, and `--algorithm` and `--guard` measure the limit under other settings.
 
-## Reproducing the results
+## Reproduce the results in the final presentation
+
+These commands rebuild the published results that the [final presentation](results/final_presentation.pdf) is drawn from: the simulated inputs, the main experiment, the eight building cases and the express layouts, each with its charts. Together they take over an hour.
 
 ```powershell
 python -m elevator_sim generate --suite --out data/generated

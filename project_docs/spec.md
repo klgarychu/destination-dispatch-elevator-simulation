@@ -1179,7 +1179,7 @@ All of these were met at Gate 6 (`results/final/phase_review.md`). Making the re
 | ID | Concern | Impact |
 | --- | --- | --- |
 | C22 | **Run time** could exceed the 2-hour target (section 13.5) | Resolved: measured at every gate (M9), and the final 20,880 runs took about 71 minutes on 8 workers. Any cut needs the owner's agreement |
-| C23 | **Python 3.15 is new.** 3.15.0 came out on 2026-10-09 and 3.15.2 on 2026-10-25. `requires-python = ">=3.15"` means an assessor on an older Python can't install the project | Follows the owner's decision (S1). The README must state it first. Windows builds were checked. Other systems were not |
+| C23 | **Python 3.15 is new.** 3.15.0 came out on 2026-10-09 and 3.15.2 on 2026-10-25. Requiring it would mean an assessor on an older Python can't install the project | Eased: `requires-python = ">=3.14"`, at the owner's request (M44), and checked on 3.14.7. An assessor on 3.13 or older still can't install it. The README must state the minimum first, and that the final results were produced on 3.15.2. Windows builds were checked. Other systems were not |
 | C24 | Python 3.15 wasn't installed on the development PC, and the `winget` catalogue listed only up to 3.14 | Resolved: WP 1.1 installed 3.15.2 (plan PC9). The Store Python 3.12 remains the default `python`, so use `.venv` |
 | C25 | The PDF says nothing about AI tools | The README discloses AI assistance (R5). **The owner should check the company's rules before submitting** |
 | C26 | Publishing the PDF, `project_docs/`, `AGENTS.md` or `CLAUDE.md` by accident would expose the exercise | `.gitignore` kept them local (M15), and Gate 6 found none of them in any commit. The owner then chose to publish `AGENTS.md`, `CLAUDE.md` and the five core documents in `project_docs/` (M42). The PDF and the other `project_docs/` files stay local. Check `git ls-files` before every push |
@@ -1217,7 +1217,7 @@ These rules are agreed, and the code doesn't meet them at `0393f52`. A code revi
 
 R-35's checklist for the README:
 
-- Python 3.15 requirement, and how to install and run, including the PDF sample command.
+- Python 3.14 requirement (M44), and how to install, activate the virtual environment and run, including the PDF sample command.
 - Time spent, in the owner's words.
 - Assumptions, simplifications and trade-offs, taken from `assumptions_made.md`, including sections 7.3 and 9.6.
 - A short description of each algorithm, behaviour and method, marking our adaptations.

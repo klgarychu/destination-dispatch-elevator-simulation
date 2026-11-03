@@ -8,7 +8,7 @@ Python setup and engineering standards for this project. `pyproject.toml` is the
 
 | Tool | Version | Use |
 | --- | --- | --- |
-| Python | 3.15.2 | Interpreter, with `requires-python = ">=3.15"` |
+| Python | 3.14 or later | Interpreter, with `requires-python = ">=3.14"`. The final results were produced on 3.15.2, which byte-identical reproduction needs (M44) |
 | `matplotlib` | 3.11.2 | `charts` extra, imported only by `charts.py` |
 | `pytest` | 9.2.0 | Unit, scenario and integration tests |
 | `hypothesis` | 6.170.14 | Property tests |
@@ -19,10 +19,10 @@ The simulator imports only the standard library. Any new package needs the owner
 
 ## Environment
 
-`python` on this PC is the Store 3.12, and shell state doesn't persist between tool calls. Call the virtual environment's interpreter by path, every time:
+`python` on this PC is the system Python outside `.venv`, and shell state doesn't persist between tool calls. Call the virtual environment's interpreter by path, every time:
 
 ```powershell
-py -3.15 -m venv .venv
+py -m venv .venv
 .venv\Scripts\python.exe -m pip install -e ".[dev,charts]"
 ```
 
