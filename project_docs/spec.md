@@ -173,8 +173,8 @@ elevator_sim_claude/
 ├── README.md
 ├── AGENTS.md                   # rules for any agent
 ├── CLAUDE.md                   # Python setup and standards for Claude Code
-├── .gitignore                  # keeps docs/, run data and the other sdlc/ files local (M40, M42)
-├── sdlc/                       # intent, this spec, plan, research and decision log (M42)
+├── .gitignore                  # keeps docs/, run data and the other project_docs/ files local (M40, M42)
+├── project_docs/                       # intent, this spec, plan, research and decision log (M42)
 ├── configs/
 │   ├── 3car-10floor-6cap.toml  # one file per case in section 12.1
 │   ├── 6car-60floor-6cap-express.toml  # 60 floors, 6 cars, 2 of them express
@@ -1146,7 +1146,7 @@ All of these were met at Gate 6 (`results/final/phase_review.md`). Making the re
 | C3 | "Serve all requests" and "no passenger should wait indefinitely" can't become a fixed maximum wait, because requests can't be refused | Defined as always served, with bounds in round trips (D19) | **No time limit is possible** under overload. Don't claim one |
 | C4 | Strict fairness means request order, but LOOK stops a car turning back, and final assignment stops passengers changing cars | Strict applies per car and direction (D11) | **Absolute request order isn't achievable.** A later passenger on another car, or going the other way, can board first |
 | C5 | The PDF requires immediate assignment to one car and also hard capacity. Nothing guarantees a seat when the car arrives | Capacity is hard at boarding and soft at assignment. Passengers can be left behind (D2) | **A seat can't be promised at assignment.** Holding a passenger back until a seat is free would break "immediately assigns" |
-| C6 | The PDF requires a public GitHub repo, and the owner decided to work locally and push by hand, leaving out `sdlc/` and the PDF (R1, R2) | Local repo. At the owner's request the agent then pushed it to a private GitHub repo (M39) | **R-34 is met when the owner makes the repo public.** The README carries the assumptions, as the PDF asks (R6), and `assumptions_made.md` is published too (M42) |
+| C6 | The PDF requires a public GitHub repo, and the owner decided to work locally and push by hand, leaving out `project_docs/` and the PDF (R1, R2) | Local repo. At the owner's request the agent then pushed it to a private GitHub repo (M39) | **R-34 is met when the owner makes the repo public.** The README carries the assumptions, as the PDF asks (R6), and `assumptions_made.md` is published too (M42) |
 | C7 | The intent says to follow the PDF strictly, but the PDF doesn't define direction logic, wait time, the start floor, or how a full car is handled | Each reading is recorded in `assumptions_made.md` | **The assessor may read these differently.** The README must state them |
 | C8 | The target is "insertion", but LOOK leaves no insertion position, and free ordering would break the direction rule (D3) | Insertion reduces to choosing a car by forward simulation (D16) | The name is kept, but no position search exists. Published work found fixed order cost 7.13% in down-peak journey time and 1.41% in mixed traffic on small problems, and nothing in up-peak [7] |
 | C9 | The PDF requires "how long you spent", which only the candidate knows | README had a placeholder (R4), and the owner then supplied the hours (M39) | Resolved: R-35 is met. No agent estimates the hours |
@@ -1182,7 +1182,7 @@ All of these were met at Gate 6 (`results/final/phase_review.md`). Making the re
 | C23 | **Python 3.15 is new.** 3.15.0 came out on 2026-10-09 and 3.15.2 on 2026-10-25. `requires-python = ">=3.15"` means an assessor on an older Python can't install the project | Follows the owner's decision (S1). The README must state it first. Windows builds were checked. Other systems were not |
 | C24 | Python 3.15 wasn't installed on the development PC, and the `winget` catalogue listed only up to 3.14 | Resolved: WP 1.1 installed 3.15.2 (plan PC9). The Store Python 3.12 remains the default `python`, so use `.venv` |
 | C25 | The PDF says nothing about AI tools | The README discloses AI assistance (R5). **The owner should check the company's rules before submitting** |
-| C26 | Publishing the PDF, `sdlc/`, `AGENTS.md` or `CLAUDE.md` by accident would expose the exercise | `.gitignore` kept them local (M15), and Gate 6 found none of them in any commit. The owner then chose to publish `AGENTS.md`, `CLAUDE.md` and the five core documents in `sdlc/` (M42). The PDF and the other `sdlc/` files stay local. Check `git ls-files` before every push |
+| C26 | Publishing the PDF, `project_docs/`, `AGENTS.md` or `CLAUDE.md` by accident would expose the exercise | `.gitignore` kept them local (M15), and Gate 6 found none of them in any commit. The owner then chose to publish `AGENTS.md`, `CLAUDE.md` and the five core documents in `project_docs/` (M42). The PDF and the other `project_docs/` files stay local. Check `git ls-files` before every push |
 | C27 | Byte-identical output is only guaranteed on the same Python version and operating system | Acceptable for this project. State it in the README |
 
 ### 16.5 Rules the code doesn't meet yet

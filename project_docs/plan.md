@@ -5,7 +5,7 @@
 | Status | **Complete.** Every gate is decided, and Gate 6 was approved on 2026-11-02 and tagged `phase-6` (section 13). Phase 5 was skipped at Gate 3 (M34). Section 14 records the work since Gate 6 |
 | Date | 2026-10-30, last updated 2026-11-03 |
 | Design | [spec.md](spec.md). This plan says when things are built. The spec says how they work |
-| Decision log | [assumptions_made.md](assumptions_made.md). M1 to M42 come from this plan, its code reviews, its gates and the owner's later requests |
+| Decision log | [assumptions_made.md](assumptions_made.md). M1 to M43 come from this plan, its code reviews, its gates and the owner's later requests |
 | Approver | The project owner |
 | Replaces | The phase table in spec section 18 (M1), which M41 then removed from the spec |
 
@@ -37,7 +37,7 @@ Every phase ends the same way: tests pass, a simulation produces statistics, cha
 7. **Record assumptions.** Add anything new to `assumptions_made.md`, and list it in the phase review.
 8. **Agree any cut.** Dropping scope, seeds or test values needs the approver's agreement (G17).
 9. **Don't change the interpreter mid-project.** Stay on Python 3.15.2, because byte-identical results depend on it (C27).
-10. **Commit as you go.** Commit each finished piece of work to `main` with a clear message, at least once per work package, so the history shows how the project was built. The whole history is published when the owner pushes, so never commit secrets or anything `.gitignore` keeps local, such as `docs/` and the review files in `sdlc/` (M14, M42).
+10. **Commit as you go.** Commit each finished piece of work to `main` with a clear message, at least once per work package, so the history shows how the project was built. The whole history is published when the owner pushes, so never commit secrets or anything `.gitignore` keeps local, such as `docs/` and the review files in `project_docs/` (M14, M42).
 
 ## 3. What every phase produces
 
@@ -59,7 +59,7 @@ python -m elevator_sim charts --stats results/phaseN --out results/phaseN/charts
 
 ### 3.2 Review pack
 
-Each phase has its own folder, so results from different code versions never mix (M7). `.gitignore` keeps `docs/`, every `sdlc/` file except the five core documents, `data/generated/` and every results folder local, and lists by name the files that are published (M40, M42, spec section 14.1). Only the final suite writes directly to `results/`.
+Each phase has its own folder, so results from different code versions never mix (M7). `.gitignore` keeps `docs/`, every `project_docs/` file except the five core documents, `data/generated/` and every results folder local, and lists by name the files that are published (M40, M42, spec section 14.1). Only the final suite writes directly to `results/`.
 
 ```text
 results/phaseN/
@@ -155,7 +155,7 @@ Write the hand-calculated fixtures in spec section 15.2 before the code they tes
 
 | WP | Work | Main files | Tests |
 | --- | --- | --- | --- |
-| 1.1 Setup | Install Python 3.15.2 from python.org. Create `.venv` with `py -3.15 -m venv .venv`. Confirm the commit name and email with the owner (PC11), run `git init -b main`, and commit `.gitignore` first. Add a stub `README.md`, and `pyproject.toml` from the starter in `CLAUDE.md`. It sets `requires-python = ">=3.15"`, the `dev` and `charts` extras, and the versions in spec section 18, which are now in `CLAUDE.md` | `pyproject.toml`, `.gitignore`, `README.md` | `pytest`, `ruff` and `mypy` run on an empty package. `git status` doesn't list `docs/` or `sdlc/` |
+| 1.1 Setup | Install Python 3.15.2 from python.org. Create `.venv` with `py -3.15 -m venv .venv`. Confirm the commit name and email with the owner (PC11), run `git init -b main`, and commit `.gitignore` first. Add a stub `README.md`, and `pyproject.toml` from the starter in `CLAUDE.md`. It sets `requires-python = ">=3.15"`, the `dev` and `charts` extras, and the versions in spec section 18, which are now in `CLAUDE.md` | `pyproject.toml`, `.gitignore`, `README.md` | `pytest`, `ruff` and `mypy` run on an empty package. `git status` doesn't list `docs/` or `project_docs/` |
 | 1.2 Input and settings | `Request`, CSV loader, validation, sorting, `SimConfig`, TOML loading | `requests.py`, `config.py` | TST-03, TST-12 (settings) |
 | 1.3 Cars | `Elevator`, `NormalElevator`, factory, LOOK, `exchange`, `move`, `min_time` boarding | `elevators/`, `boarding/behaviours.py` | TST-02, TST-07, TST-08 (`min_time`) |
 | 1.4 Engine | Tick loop, `simulate()`, `FleetView`, `round_robin`, statistics, output files | `engine.py`, `schedulers/base.py`, `schedulers/round_robin.py`, `metrics.py`, `output.py` | TST-01, TST-04, TST-05, TST-09, TST-14 |
@@ -416,7 +416,7 @@ Stage 2 uses `marginal_insertion` only, at medium, heavy and overload load.
 ### 9.2 Exit criteria
 
 - Spec section 15.3 is met in full.
-- `git ls-files` lists nothing from `docs/` or `sdlc/` (C26), no `results/phase*` files, and neither `AGENTS.md` nor `CLAUDE.md`.
+- `git ls-files` lists nothing from `docs/` or `project_docs/` (C26), no `results/phase*` files, and neither `AGENTS.md` nor `CLAUDE.md`.
 - The README contains no conclusion on which option is best. That's written by the owner (C2).
 
 ### 9.3 Gate 6 questions
@@ -523,7 +523,8 @@ Every gate is decided, so no phase is unlocked. Work now comes only from the own
 | --- | --- | --- | --- |
 | 2026-11-02 | Publish the PDF sample run, each final folder's statistics, per-configuration files, sample logs and suite log, and the final presentation | M40 | `6203861` |
 | 2026-11-02 | Link the final presentation from the top of the README | Owner's request | `0393f52` |
-| 2026-11-03 | Reconcile `intent.md`, the spec, this plan, the research report, the decision log, `AGENTS.md` and `CLAUDE.md` with the decisions and the code, after a review of them. The spec marks six agreed rules the code doesn't meet as Open (spec section 16.5). No code, test or result changed | M41 | With M42 |
-| 2026-11-03 | Publish `AGENTS.md`, `CLAUDE.md` and the five core documents in `sdlc/`, committed locally for the owner to check before pushing | M42 | The commit that adds this row |
+| 2026-11-03 | Reconcile `intent.md`, the spec, this plan, the research report, the decision log, `AGENTS.md` and `CLAUDE.md` with the decisions and the code, after a review of them. The spec marks six agreed rules the code doesn't meet as Open (spec section 16.5). No code, test or result changed | M41 | `baffcd3` |
+| 2026-11-03 | Publish `AGENTS.md`, `CLAUDE.md` and the five core documents in `project_docs/`, committed locally for the owner to check before pushing | M42 | `baffcd3` |
+| 2026-11-03 | Rename `sdlc/` to `project_docs/` | M43 | The commit that adds this row |
 
-The open items are the owner's: check and push the documents commit (M42), make the repo public (R-34), check the company's rules on AI use (C25), and decide whether to fix C29 to C34 (PC24).
+The open items are the owner's: push the rename commit (M43), make the repo public (R-34), check the company's rules on AI use (C25), and decide whether to fix C29 to C34 (PC24).
