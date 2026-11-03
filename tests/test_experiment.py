@@ -11,6 +11,7 @@ from elevator_sim.cli import main
 from elevator_sim.config import (
     ALGORITHMS,
     ALL_ALGORITHMS,
+    ExpressCar,
     SimConfig,
     config_id,
     settings_record,
@@ -31,7 +32,7 @@ from elevator_sim.experiment import (
     stage_2_tasks,
     suite_tasks,
 )
-from elevator_sim.output import read_manifest
+from elevator_sim.output import read_manifest, read_run_record
 from elevator_sim.workload import BUILDINGS, building_config, suite_inputs
 
 SIX_ROWS = "time,id,source,dest\n0,a,1,5\n0,b,5,1\n2,c,3,8\n4,d,8,2\n9,e,1,9\n12,f,6,4\n"
@@ -384,6 +385,31 @@ def test_a_stale_run_that_then_stalls_leaves_no_old_result(tmp_path: Path) -> No
     assert not (out / "runs" / "run.json").exists()
     assert not (out / "samples" / "input" / "eta__min_time__skip_limit-2-hold__none").exists()
     assert read_rows(out / "simulation_stats.csv") == []
+
+
+def test_c31_a_saved_run_holds_every_building_setting(tmp_path: Path) -> None:
+    file = tmp_path / "input.csv"
+    file.write_text(SIX_ROWS, encoding="utf-8")
+    config = SimConfig(
+        floors=10,
+        elevators=2,
+        start_floor=2,
+        max_ticks=500,
+        express=(ExpressCar(2, (1, 6, 7, 8, 9, 10)),),
+    )
+    run_suite([Task("run", config, 1, "b", "p", "l", 1, file)], tmp_path / "out", workers=1)
+
+    saved = read_run_record(tmp_path / "out", "run")
+
+    assert saved is not None
+    assert saved.building_settings == {
+        "floors": 10,
+        "elevators": 2,
+        "capacity": 6,
+        "start_floor": 2,
+        "max_ticks": 500,
+        "express": [{"car": 2, "serves": "1,6-10"}],
+    }
 
 
 def test_every_output_leaves_out_a_configuration_with_no_finished_runs(tmp_path: Path) -> None:

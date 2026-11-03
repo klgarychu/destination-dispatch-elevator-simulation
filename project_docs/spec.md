@@ -129,7 +129,7 @@ A rule elsewhere in this spec that the code doesn't meet yet is marked **Open** 
 | ID | Requirement | Source | Test | Status |
 | --- | --- | --- | --- | --- |
 | R-18 | Log every elevator's position for every tick, starting at 0, to a file with one row per tick | PDF, O2 | TST-04, PDF sample | Met |
-| R-19 | On completion, output minimum, maximum and average wait time and total time | PDF, O3 | TST-05, PDF sample | Met. The saved settings beside them are Open (C31) |
+| R-19 | On completion, output minimum, maximum and average wait time and total time | PDF, O3 | TST-05, PDF sample | Met, with the complete settings beside them (M46, which fixed C31) |
 | R-20 | Output other notable observations about time distributions or system behaviour | PDF | TST-05 | Met |
 | R-21 | End the run at the last drop-off | O1 | TST-04 | Met |
 | R-22 | Abort with a clear error if `max_ticks` is reached | O4 | TST-17 | Met |
@@ -785,7 +785,7 @@ One row per passenger, in request order.
 ```json
 {
   "config": {"algorithm": "marginal_insertion", "behaviour": "min_time"},
-  "building": {"floors": 60, "elevators": 1, "capacity": 6, "express_cars": []},
+  "building": {"floors": 60, "elevators": 1, "capacity": 6, "start_floor": 1, "max_ticks": null, "express": []},
   "passengers": 3,
   "ticks": 100,
   "wait_time": {"min": 0, "mean": 23.67, "max": 71, "p95": 71, "stdev": 33.47},
@@ -799,12 +799,12 @@ This example is the PDF sample from section 15.2 as the code writes it now, with
 | Key | Contents |
 | --- | --- |
 | `config` | The dispatch settings in force: `algorithm`, `behaviour`, `fairness_weight` (`null` unless `weighted`), `guard` (`none` under `strict`, D24), `guard_value`, `seat_hold` (`false` with no guard), `assignment_rule` (always `none`), `rule_value` (`null`) and `unguarded` |
-| `building` | `floors`, `elevators`, `capacity`, `start_floor`, `max_ticks` as set (`null` for the formula in section 7.5), and each express car with the floors it serves |
+| `building` | `floors`, `elevators`, `capacity`, `start_floor`, `max_ticks` as set (`null` for the formula in section 7.5), and `express`, each express car as `{"car": 4, "serves": "1,11-20"}`, the form an `[[express]]` table takes |
 | `passengers`, `ticks` | Counts for the run |
 | `wait_time`, `total_time` | `min`, `mean`, `max`, `p95` and `stdev`, with the mean and standard deviation rounded to 2 decimals (M18). `null` with no passengers (I5) |
 | `observations` | Plain facts about the run, below |
 
-Together with the input file, `config` and `building` must be enough to repeat the run. **Open (C31):** `building` holds only `express_cars`, the express car numbers, and leaves out `start_floor`, `max_ticks` and the floors each express car serves. Saved runs in `results/runs/` have the same gap: they store the dispatch settings, and their fingerprint is a hash, which can't be turned back into the settings.
+Together with the input file, `config` and `building` must be enough to repeat the run. Saved runs in `results/runs/` store the same two records, as `settings` and `building_settings`, because their fingerprint is a hash, which can't be turned back into the settings. Met since M46, which fixed C31: before it, `building` held only `express_cars`, the express car numbers, and left out `start_floor`, `max_ticks` and the floors each car serves, and saved runs held only the dispatch settings.
 
 `observations` meets R-20. It holds plain facts about one run: the longest-waiting passenger, the busiest source floor, peak passengers waiting, share with zero wait, and times left behind. It must not compare configurations.
 
@@ -1187,13 +1187,13 @@ All of these were met at Gate 6 (`results/final/phase_review.md`). Making the re
 
 ### 16.5 Rules the code doesn't meet yet
 
-These rules are agreed, and the code doesn't meet them at `0393f52`. A code review on 2026-11-02 found them, and each was checked against the code. Each stays Open until a test checks the rule itself. Fixing them is a separate decision, because some fixes change code behind published files.
+These rules are agreed, and the code doesn't meet them at `0393f52`. A code review on 2026-11-02 found them, and each was checked against the code. Each stays Open until a test checks the rule itself. Fixing them is a separate decision, because some fixes change code behind published files. The owner then had C31 fixed (M46), and the other five stay Open.
 
 | ID | Rule | Gap | Section |
 | --- | --- | --- | --- |
 | C29 | Every setting is type-checked, in files and through the Python API (I7) | An `[[express]]` entry that isn't a table raises an uncaught `TypeError`. The API accepts an express car number or served floor that isn't a whole number, and a repeated served floor | 10.1 |
 | C30 | An option that doesn't apply is refused with exit code 2 (M12) | `compare --requests` ignores `--guard`, `--stage`, `--phase`, `--quick` and `--inputs`, and other modes ignore options too | 10.2 |
-| C31 | The saved settings are enough to repeat a run | `summary.json` and saved runs leave out `start_floor`, `max_ticks` and the floors each express car serves | 11.3 |
+| C31 | The saved settings are enough to repeat a run | Resolved (M46). `summary.json` and saved runs left out `start_floor`, `max_ticks` and the floors each express car serves | 11.3 |
 | C32 | A derived configuration passes the same validation as any other | Calibration switches to `min_time` and keeps a `weighted` file's weight, so it fails | 12.4 |
 | C33 | Charts draw the own-limit runs only | The car movement chart keeps the last sample per algorithm. The published `results/express/charts/car_movement_6car-60floor-6cap-express.png` draws the fixed-load run, while its caption names the own-limit input | 14.3 |
 | C34 | An observed zero isn't shown as missing | The Anti-starvation methods chart labels a panel whose highest value is 0 as "no passengers" | 14.3 |
@@ -1207,7 +1207,7 @@ These rules are agreed, and the code doesn't meet them at `0393f52`. A code revi
 | Read the charts and write the conclusion on which option is best | C2 | Before the presentation | Done (M39) |
 | Create the GitHub repo, and make it public | C6 | At the end | Done: the agent pushed at the owner's request (M39), and made the repo public on 2026-11-03 (M45) |
 | Decide on any scope cut if the suite is too slow | C22 | If it happens | Not needed (section 13.5) |
-| Decide whether to fix the rules in section 16.5 | C29 to C34 | Before making the repo public | Open |
+| Decide whether to fix the rules in section 16.5 | C29 to C34 | Before making the repo public | C31 fixed (M46). Open for C29, C30 and C32 to C34 |
 
 ## 18. Delivery plan
 

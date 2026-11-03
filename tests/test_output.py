@@ -4,7 +4,9 @@ import csv
 import json
 from pathlib import Path
 
-from elevator_sim.config import ExpressCar, SimConfig
+import pytest
+
+from elevator_sim.config import ExpressCar, SimConfig, format_serves, parse_serves
 from elevator_sim.engine import simulate
 from elevator_sim.output import (
     RunRecord,
@@ -78,7 +80,14 @@ def test_tst05_summary_file_matches_the_spec_example(tmp_path: Path) -> None:
 
     summary = json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))
 
-    assert summary["building"] == {"floors": 60, "elevators": 1, "capacity": 6, "express_cars": []}
+    assert summary["building"] == {
+        "floors": 60,
+        "elevators": 1,
+        "capacity": 6,
+        "start_floor": 1,
+        "max_ticks": None,
+        "express": [],
+    }
     assert summary["passengers"] == 3
     assert summary["ticks"] == 100
     assert summary["wait_time"] == {"min": 0, "mean": 23.67, "max": 71, "p95": 71, "stdev": 33.47}
@@ -102,12 +111,41 @@ def test_summary_config_holds_all_settings_in_full() -> None:
     }
 
 
-def test_summary_lists_the_express_cars() -> None:
-    config = SimConfig(floors=8, elevators=2, express=(ExpressCar(2, (1, 5, 6, 7, 8)),))
+def test_c31_summary_building_holds_every_building_setting() -> None:
+    config = SimConfig(
+        floors=8,
+        elevators=2,
+        start_floor=3,
+        max_ticks=500,
+        express=(ExpressCar(2, (1, 5, 6, 7, 8)),),
+    )
 
     summary = summary_data(simulate([Request(0, "a", 1, 6)], config))
 
-    assert summary["building"]["express_cars"] == [2]
+    assert summary["building"] == {
+        "floors": 8,
+        "elevators": 2,
+        "capacity": 6,
+        "start_floor": 3,
+        "max_ticks": 500,
+        "express": [{"car": 2, "serves": "1,5-8"}],
+    }
+
+
+@pytest.mark.parametrize(
+    ("floors", "text"),
+    [
+        ((4,), "4"),
+        ((1, 2, 3), "1-3"),
+        ((1, 3, 5), "1,3,5"),
+        ((2, 3, 10, 11, 12, 20), "2-3,10-12,20"),
+    ],
+)
+def test_c31_express_floors_are_written_as_a_config_file_reads_them(
+    floors: tuple[int, ...], text: str
+) -> None:
+    assert format_serves(floors) == text
+    assert parse_serves(text) == floors
 
 
 def a_record(run_id: str = "run", sample_dir: str | None = None) -> RunRecord:
@@ -122,6 +160,7 @@ def a_record(run_id: str = "run", sample_dir: str | None = None) -> RunRecord:
         load_basis="own_limit",
         seed=1,
         settings={"algorithm": "eta"},
+        building_settings={"floors": 10},
         stats={"passengers": 2},
         waits=[0, 3],
         totals=[4, 9],

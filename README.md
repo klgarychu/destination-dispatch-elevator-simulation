@@ -51,7 +51,7 @@ python -m elevator_sim run --requests examples/pdf_sample.csv --config configs/p
 | --- | --- |
 | `positions.csv` | Every car's floor at every tick, from tick 0 to the last drop-off |
 | `passengers.csv` | Each passenger's car, board and drop-off ticks, wait, travel and total time, and times left behind |
-| `summary.json` | The settings, and the minimum, mean, maximum, p95 and standard deviation of wait and total time |
+| `summary.json` | The dispatch and building settings, enough with the input to repeat the run, and the minimum, mean, maximum, p95 and standard deviation of wait and total time |
 
 The output for the sample is in [results/sample/](results/sample/). Exit codes are 0 for success, 2 for invalid input or settings, and 3 for reaching `max_ticks`. Errors go to stderr, with every bad input row listed.
 

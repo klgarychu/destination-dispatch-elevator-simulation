@@ -5,7 +5,7 @@
 | Status | **Complete.** Every gate is decided, and Gate 6 was approved on 2026-11-02 and tagged `phase-6` (section 13). Phase 5 was skipped at Gate 3 (M34). Section 14 records the work since Gate 6 |
 | Date | 2026-10-30, last updated 2026-11-03 |
 | Design | [spec.md](spec.md). This plan says when things are built. The spec says how they work |
-| Decision log | [assumptions_made.md](assumptions_made.md). M1 to M45 come from this plan, its code reviews, its gates and the owner's later requests |
+| Decision log | [assumptions_made.md](assumptions_made.md). M1 to M46 come from this plan, its code reviews, its gates and the owner's later requests |
 | Approver | The project owner |
 | Replaces | The phase table in spec section 18 (M1), which M41 then removed from the spec |
 
@@ -499,7 +499,7 @@ Each "What remains" starts with **Resolved** or **Open**. Resolved concerns keep
 | PC21 | **Express gains here leave out the main real-world one.** Stops take no time (Q36), so a car saves nothing by skipping a floor. In a real building, fewer stops are the main reason to run express cars | Every express result here comes from separating traffic, and the presentation says so | **Open, as a known limit** accepted at Gate 6. Treat these results as a lower bound on what express cars do for ride time, and don't compare them with published figures |
 | PC22 | **Later phases' buildings and algorithms.** The plan's later phases used `6car-60floor-6cap` and had no `rush_express` | **Resolved at Gate 2:** `rush_express` joins them, and they use `3car-10floor-6cap`, `3car-60floor-6cap` and `3car-60floor-6cap-overlap` | **Resolved.** Stage 1 grows from 25 to 30 configurations |
 | PC23 | **Skipping Phase 5 leaves part of R-28 unbuilt.** R-28 asks for every method in D17, and the five assignment rules are in D17 | The owner skipped Phase 5 at Gate 3 (M34). `assignment_rule` stays refused, Stage 2 is rows 1 to 4, and the Anti-starvation methods chart shows guards and seat hold only | **Open, as a known limit** accepted at Gate 6. The README and spec section 16 list the assignment rules as a known limit. The spec's 14,760-row suite becomes 10,440 rows |
-| PC24 | **The documents fell behind the decisions.** After Gate 6 a review found superseded rules still reading as current in the spec, the plan and the agent files, and two agreed rules the code doesn't meet | Section 14 reconciles the documents (M41). The spec marks every rule the code doesn't meet as Open (spec section 16.5) | **Open:** whether to fix the six Open rules, C29 to C34, is the owner's decision. Some fixes change code behind published files |
+| PC24 | **The documents fell behind the decisions.** After Gate 6 a review found superseded rules still reading as current in the spec, the plan and the agent files, and two agreed rules the code doesn't meet | Section 14 reconciles the documents (M41). The spec marks every rule the code doesn't meet as Open (spec section 16.5) | **Open:** whether to fix the six Open rules, C29 to C34, is the owner's decision. Some fixes change code behind published files. The owner had C31 fixed (M46), and five stay Open |
 
 ## 13. Approval log
 
@@ -528,6 +528,7 @@ Every gate is decided, so no phase is unlocked. Work now comes only from the own
 | 2026-11-03 | Rename `sdlc/` to `project_docs/` | M43 | `21fe6b6` |
 | 2026-11-03 | Lower the minimum to Python 3.14, in `pyproject.toml`, the packaging test, the README and `CLAUDE.md` | M44 | `97296dc` |
 | 2026-11-03 | README: add PowerShell activation of the virtual environment to Install, with the execution-policy fix, rename two sections, and introduce the reproduction commands | Owner's request | `97296dc` |
-| 2026-11-03 | Make the GitHub repo public, and verify it without a credential | M45 | No code commit. This row's commit records it |
+| 2026-11-03 | Make the GitHub repo public, and verify it without a credential | M45 | No code commit. `be198a7` records it |
+| 2026-11-03 | Fix C31: `summary.json` and saved runs hold every building setting. Then run the PDF sample and the three final suites again, so the published `summary.json` files match the code | M46 | The commit that adds this row |
 
-The open items are the owner's: check the company's rules on AI use (C25), and decide whether to fix C29 to C34 (PC24).
+The open items are the owner's: check the company's rules on AI use (C25), and decide whether to fix C29, C30 and C32 to C34 (PC24).

@@ -73,6 +73,17 @@ def parse_serves(text: str) -> tuple[int, ...]:
     return tuple(sorted(floors))
 
 
+def format_serves(floors: tuple[int, ...]) -> str:
+    """Floors in order as `parse_serves` reads them, with each run of floors as a range."""
+    runs: list[list[int]] = []
+    for floor in floors:
+        if runs and floor == runs[-1][-1] + 1:
+            runs[-1].append(floor)
+        else:
+            runs.append([floor])
+    return ",".join(str(run[0]) if len(run) == 1 else f"{run[0]}-{run[-1]}" for run in runs)
+
+
 @dataclass(frozen=True, slots=True)
 class ExpressCar:
     """A car that serves only these floors. Every other car is normal (B5)."""
@@ -239,6 +250,21 @@ def settings_record(config: SimConfig) -> dict[str, str | int | float | bool | N
         "rule_value": None,
         # Strict meets "no passenger waits forever" by itself, so it needs no guard (D24).
         "unguarded": guard == "none" and config.behaviour != "strict",
+    }
+
+
+def building_record(config: SimConfig) -> dict[str, Any]:
+    """All building settings by name, as a config file sets them, so a run can be repeated."""
+    return {
+        "floors": config.floors,
+        "elevators": config.elevators,
+        "capacity": config.capacity,
+        "start_floor": config.start_floor,
+        # None when the engine's formula sets the limit (spec section 7.5).
+        "max_ticks": config.max_ticks,
+        "express": [
+            {"car": car.car, "serves": format_serves(car.serves)} for car in config.express
+        ],
     }
 
 

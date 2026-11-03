@@ -6,7 +6,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from elevator_sim.config import ConfigError, settings_record
+from elevator_sim.config import ConfigError, building_record, settings_record
 from elevator_sim.engine import SimulationResult
 from elevator_sim.metrics import (
     TimeStats,
@@ -59,6 +59,7 @@ class RunRecord:
     load_basis: str
     seed: int
     settings: dict[str, Any]
+    building_settings: dict[str, Any]
     stats: dict[str, Any]
     waits: list[int]
     totals: list[int]
@@ -123,12 +124,7 @@ def summary_data(result: SimulationResult) -> dict[str, Any]:
     config = result.config
     return {
         "config": settings_record(config),
-        "building": {
-            "floors": config.floors,
-            "elevators": config.elevators,
-            "capacity": config.capacity,
-            "express_cars": [car.car for car in config.express],
-        },
+        "building": building_record(config),
         "passengers": len(result.passengers),
         "ticks": result.ticks,
         "wait_time": _rounded(time_stats([wait_time(p) for p in result.passengers])),
