@@ -94,14 +94,14 @@ def test_tst03_validate_requests_applies_the_same_rules_to_a_list() -> None:
 @pytest.mark.parametrize(
     ("bad", "expected"),
     [
-        (Request(0.5, "a", 1, 2), "time"),
-        (Request(float("nan"), "a", 1, 2), "time"),
+        (Request(0.5, "a", 1, 2), "time"),  # type: ignore[arg-type]  # bad values
+        (Request(float("nan"), "a", 1, 2), "time"),  # type: ignore[arg-type]  # bad values
         (Request(True, "a", 1, 2), "time"),
-        (Request(0, 5, 1, 2), "id"),
-        (Request(0, ["a"], 1, 2), "id"),
-        (Request(0, "a", 1.5, 2), "source"),
+        (Request(0, 5, 1, 2), "id"),  # type: ignore[arg-type]  # bad values
+        (Request(0, ["a"], 1, 2), "id"),  # type: ignore[arg-type]  # bad values
+        (Request(0, "a", 1.5, 2), "source"),  # type: ignore[arg-type]  # bad values
         (Request(0, "a", True, 2), "source"),
-        (Request(0, "a", 1, 2.5), "dest"),
+        (Request(0, "a", 1, 2.5), "dest"),  # type: ignore[arg-type]  # bad values
     ],
 )
 def test_tst03_validate_requests_rejects_fields_of_the_wrong_type(
@@ -113,7 +113,7 @@ def test_tst03_validate_requests_rejects_fields_of_the_wrong_type(
 
 def test_tst03_simulate_refuses_a_fractional_time_instead_of_stalling() -> None:
     with pytest.raises(InputValidationError, match="time"):
-        simulate([Request(0.5, "a", 1, 2)], SimConfig(floors=3))
+        simulate([Request(0.5, "a", 1, 2)], SimConfig(floors=3))  # type: ignore[arg-type]  # bad value
 
 
 def test_tst03_rejects_a_file_that_is_not_utf_8(tmp_path: Path) -> None:

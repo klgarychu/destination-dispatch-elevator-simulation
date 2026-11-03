@@ -35,9 +35,11 @@ Run these before every commit, and fix what they report:
 ```powershell
 .venv\Scripts\python.exe -m ruff format .
 .venv\Scripts\python.exe -m ruff check --fix .
-.venv\Scripts\python.exe -m mypy --strict src
+.venv\Scripts\python.exe -m mypy --strict src tests
 .venv\Scripts\python.exe -m pytest
 ```
+
+Type-check `src` and `tests` in one run (M47). Checked alone, `tests` sees the installed package as untyped, because it has no `py.typed` marker.
 
 During a review, run `ruff format --check .` and `ruff check .` in their place, because a review changes no file.
 

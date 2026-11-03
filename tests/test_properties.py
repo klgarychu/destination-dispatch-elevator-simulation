@@ -48,7 +48,7 @@ def scenarios(draw: DrawFn, max_requests: int = 30) -> tuple[SimConfig, list[Req
     requests = []
     for index in range(count):
         source = draw(st.integers(1, floors))
-        dest = draw(st.integers(1, floors).filter(lambda floor, s=source: floor != s))
+        dest = draw(st.integers(1, floors).filter(source.__ne__))
         requests.append(Request(draw(st.integers(0, 60)), f"p{index}", source, dest))
     return config, requests
 
@@ -130,7 +130,7 @@ def single_cars(draw: DrawFn) -> tuple[SimConfig, list[Request]]:
     requests = []
     for index in range(draw(st.integers(1, 25))):
         source = draw(st.integers(1, floors))
-        dest = draw(st.integers(1, floors).filter(lambda floor, s=source: floor != s))
+        dest = draw(st.integers(1, floors).filter(source.__ne__))
         requests.append(Request(draw(st.integers(0, 60)), f"p{index}", source, dest))
     return config, requests
 
@@ -174,7 +174,7 @@ def guarded_single_cars(draw: DrawFn, guard: str) -> tuple[SimConfig, list[Reque
     requests = []
     for index in range(draw(st.integers(1, 25))):
         source = draw(st.integers(1, floors))
-        dest = draw(st.integers(1, floors).filter(lambda floor, s=source: floor != s))
+        dest = draw(st.integers(1, floors).filter(source.__ne__))
         requests.append(Request(draw(st.integers(0, 60)), f"p{index}", source, dest))
     return config, requests
 

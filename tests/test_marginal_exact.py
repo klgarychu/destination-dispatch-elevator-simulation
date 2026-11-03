@@ -46,7 +46,7 @@ def busy_runs(draw: DrawFn) -> tuple[SimConfig, list[Request]]:
     requests = []
     for index in range(draw(st.integers(1, 20))):
         source = draw(st.integers(1, floors))
-        dest = draw(st.integers(1, floors).filter(lambda floor, s=source: floor != s))
+        dest = draw(st.integers(1, floors).filter(source.__ne__))
         requests.append(Request(draw(st.integers(0, 60)), f"p{index}", source, dest))
     return config, sorted(requests, key=lambda request: request.time)
 

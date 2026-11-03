@@ -172,7 +172,7 @@ def roomy_scenarios(draw: DrawFn) -> tuple[SimConfig, list[Request]]:
     requests = []
     for index in range(count):
         source = draw(st.integers(1, floors))
-        dest = draw(st.integers(1, floors).filter(lambda floor, s=source: floor != s))
+        dest = draw(st.integers(1, floors).filter(source.__ne__))
         requests.append(Request(draw(st.integers(0, 50)), f"p{index}", source, dest))
     return config, requests
 
@@ -216,8 +216,10 @@ def same_floor_flood() -> list[Request]:
 def test_tst13_same_floor_starvation_ends_at_the_guards_limit(
     guard: str, limits: dict[str, int | str], wait: int, left_behind: int
 ) -> None:
+    # mypy can't match a dict of mixed value types to the fields it sets.
     config = replace(
-        SimConfig(elevators=1, capacity=1, algorithm="round_robin", guard=guard), **limits
+        SimConfig(elevators=1, capacity=1, algorithm="round_robin", guard=guard),
+        **limits,  # type: ignore[arg-type]
     )
 
     long_ride = simulate(same_floor_flood(), config).passengers[0]

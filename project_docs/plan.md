@@ -5,7 +5,7 @@
 | Status | **Complete.** Every gate is decided, and Gate 6 was approved on 2026-11-02 and tagged `phase-6` (section 13). Phase 5 was skipped at Gate 3 (M34). Section 14 records the work since Gate 6 |
 | Date | 2026-10-30, last updated 2026-11-03 |
 | Design | [spec.md](spec.md). This plan says when things are built. The spec says how they work |
-| Decision log | [assumptions_made.md](assumptions_made.md). M1 to M46 come from this plan, its code reviews, its gates and the owner's later requests |
+| Decision log | [assumptions_made.md](assumptions_made.md). M1 to M47 come from this plan, its code reviews, its gates and the owner's later requests |
 | Approver | The project owner |
 | Replaces | The phase table in spec section 18 (M1), which M41 then removed from the spec |
 
@@ -49,7 +49,7 @@ Each phase finishes by running these inside `.venv`:
 python -m pytest
 python -m ruff format --check .
 python -m ruff check .
-python -m mypy --strict src
+python -m mypy --strict src tests
 python -m elevator_sim generate --suite --out data/generated
 python -m elevator_sim compare --suite --stage all --workers 8 --out results/phaseN
 python -m elevator_sim charts --stats results/phaseN --out results/phaseN/charts
@@ -529,6 +529,7 @@ Every gate is decided, so no phase is unlocked. Work now comes only from the own
 | 2026-11-03 | Lower the minimum to Python 3.14, in `pyproject.toml`, the packaging test, the README and `CLAUDE.md` | M44 | `97296dc` |
 | 2026-11-03 | README: add PowerShell activation of the virtual environment to Install, with the execution-policy fix, rename two sections, and introduce the reproduction commands | Owner's request | `97296dc` |
 | 2026-11-03 | Make the GitHub repo public, and verify it without a credential | M45 | No code commit. `be198a7` records it |
-| 2026-11-03 | Fix C31: `summary.json` and saved runs hold every building setting. Then run the PDF sample and the three final suites again, so the published `summary.json` files match the code | M46 | The commit that adds this row |
+| 2026-11-03 | Fix C31: `summary.json` and saved runs hold every building setting. Then run the PDF sample and the three final suites again, so the published `summary.json` files match the code | M46 | `8415dd6` |
+| 2026-11-03 | Type-check `tests/` with `src/`, in `CLAUDE.md` and section 3.1, and fix the 19 errors in the tests | M47 | The commit that adds this row |
 
 The open items are the owner's: check the company's rules on AI use (C25), and decide whether to fix C29, C30 and C32 to C34 (PC24).
