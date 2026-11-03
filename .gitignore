@@ -1,8 +1,12 @@
-# Private to the project (R2, M15)
+# Private to the project (R2, M42). AGENTS.md, CLAUDE.md and the five core documents in sdlc/ are
+# published. The assessment PDF in docs/ and the other files in sdlc/ stay local.
 docs/
-sdlc/
-AGENTS.md
-CLAUDE.md
+sdlc/*
+!sdlc/intent.md
+!sdlc/spec.md
+!sdlc/plan.md
+!sdlc/algorithm_research.md
+!sdlc/assumptions_made.md
 .claude/
 
 # Environment and tool caches
