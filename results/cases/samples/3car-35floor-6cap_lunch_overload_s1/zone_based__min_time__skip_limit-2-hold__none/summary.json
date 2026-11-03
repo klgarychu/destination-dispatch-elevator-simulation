@@ -14,7 +14,9 @@
     "floors": 35,
     "elevators": 3,
     "capacity": 6,
-    "express_cars": []
+    "start_floor": 1,
+    "max_ticks": null,
+    "express": []
   },
   "passengers": 1017,
   "ticks": 1900,
