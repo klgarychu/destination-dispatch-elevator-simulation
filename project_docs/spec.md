@@ -56,7 +56,7 @@ Do not add features the PDF doesn't ask for unless a decision in `assumptions_ma
 - Ranking or naming a winner in software (G3).
 - Animation or interactive UI (O5).
 - GitHub Actions (S6).
-- Publishing without the owner's request. The agent pushed to the private repo at the owner's request (M39, M40), and making it public is the owner's step.
+- Publishing without the owner's request. The agent pushed to the repo and made it public, each time at the owner's request (M39, M40, M45).
 
 ## 4. Glossary
 
@@ -159,7 +159,7 @@ A rule elsewhere in this spec that the code doesn't meet yet is marked **Open** 
 
 | ID | Requirement | Source | Test | Status |
 | --- | --- | --- | --- | --- |
-| R-34 | Public GitHub repository containing the Python code | PDF | Manual, section 16 C6 | Owner's step: the repo is pushed and private, and the owner makes it public (M39) |
+| R-34 | Public GitHub repository containing the Python code | PDF | Manual, section 16 C6 | Met: public since 2026-11-03 (M45) |
 | R-35 | `README.md` with how to run, time spent, assumptions, simplifications and trade-offs, and what you'd improve | PDF | Review | Met, with the owner's hours and conclusion (M39) |
 | R-36 | Visualisations and statistics for the follow-up presentation | PDF, O5 | TST-17 | Met, and published (M40). Two chart rules are Open (C33, C34) |
 
@@ -1146,7 +1146,7 @@ All of these were met at Gate 6 (`results/final/phase_review.md`). Making the re
 | C3 | "Serve all requests" and "no passenger should wait indefinitely" can't become a fixed maximum wait, because requests can't be refused | Defined as always served, with bounds in round trips (D19) | **No time limit is possible** under overload. Don't claim one |
 | C4 | Strict fairness means request order, but LOOK stops a car turning back, and final assignment stops passengers changing cars | Strict applies per car and direction (D11) | **Absolute request order isn't achievable.** A later passenger on another car, or going the other way, can board first |
 | C5 | The PDF requires immediate assignment to one car and also hard capacity. Nothing guarantees a seat when the car arrives | Capacity is hard at boarding and soft at assignment. Passengers can be left behind (D2) | **A seat can't be promised at assignment.** Holding a passenger back until a seat is free would break "immediately assigns" |
-| C6 | The PDF requires a public GitHub repo, and the owner decided to work locally and push by hand, leaving out `project_docs/` and the PDF (R1, R2) | Local repo. At the owner's request the agent then pushed it to a private GitHub repo (M39) | **R-34 is met when the owner makes the repo public.** The README carries the assumptions, as the PDF asks (R6), and `assumptions_made.md` is published too (M42) |
+| C6 | The PDF requires a public GitHub repo, and the owner decided to work locally and push by hand, leaving out `project_docs/` and the PDF (R1, R2) | Local repo. At the owner's request the agent then pushed it to a private GitHub repo (M39) | Resolved: at the owner's request the agent made the repo public, so R-34 is met (M45). The README carries the assumptions, as the PDF asks (R6), and `assumptions_made.md` is published too (M42) |
 | C7 | The intent says to follow the PDF strictly, but the PDF doesn't define direction logic, wait time, the start floor, or how a full car is handled | Each reading is recorded in `assumptions_made.md` | **The assessor may read these differently.** The README must state them |
 | C8 | The target is "insertion", but LOOK leaves no insertion position, and free ordering would break the direction rule (D3) | Insertion reduces to choosing a car by forward simulation (D16) | The name is kept, but no position search exists. Published work found fixed order cost 7.13% in down-peak journey time and 1.41% in mixed traffic on small problems, and nothing in up-peak [7] |
 | C9 | The PDF requires "how long you spent", which only the candidate knows | README had a placeholder (R4), and the owner then supplied the hours (M39) | Resolved: R-35 is met. No agent estimates the hours |
@@ -1205,7 +1205,7 @@ These rules are agreed, and the code doesn't meet them at `0393f52`. A code revi
 | Check the company's rules on AI use | C25 | Before submitting | Open |
 | Supply the real hours spent | C9 | Before pushing | Done (M39) |
 | Read the charts and write the conclusion on which option is best | C2 | Before the presentation | Done (M39) |
-| Create the GitHub repo, and make it public | C6 | At the end | The agent pushed to a private repo at the owner's request (M39). Making it public is open |
+| Create the GitHub repo, and make it public | C6 | At the end | Done: the agent pushed at the owner's request (M39), and made the repo public on 2026-11-03 (M45) |
 | Decide on any scope cut if the suite is too slow | C22 | If it happens | Not needed (section 13.5) |
 | Decide whether to fix the rules in section 16.5 | C29 to C34 | Before making the repo public | Open |
 

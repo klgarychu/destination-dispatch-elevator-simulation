@@ -5,7 +5,7 @@
 | Status | **Complete.** Every gate is decided, and Gate 6 was approved on 2026-11-02 and tagged `phase-6` (section 13). Phase 5 was skipped at Gate 3 (M34). Section 14 records the work since Gate 6 |
 | Date | 2026-10-30, last updated 2026-11-03 |
 | Design | [spec.md](spec.md). This plan says when things are built. The spec says how they work |
-| Decision log | [assumptions_made.md](assumptions_made.md). M1 to M43 come from this plan, its code reviews, its gates and the owner's later requests |
+| Decision log | [assumptions_made.md](assumptions_made.md). M1 to M45 come from this plan, its code reviews, its gates and the owner's later requests |
 | Approver | The project owner |
 | Replaces | The phase table in spec section 18 (M1), which M41 then removed from the spec |
 
@@ -466,7 +466,7 @@ Golden outputs are stored in `tests/golden/`: `passengers.csv` for short inputs,
 | 4 | R-01 | R-28 (guards and seat hold) |
 | 5 | Skipped (M34). R-28's assignment rules become a known limit | |
 | 6 | R-29, R-33, R-36, R-35 except the hours | |
-| Owner | The hours in R-35, supplied by the owner (M39) | R-34: pushed to the private repo at the owner's request (M39). It is met when the owner makes the repo public |
+| Owner | The hours in R-35, supplied by the owner (M39). R-34: the repo is public, made so at the owner's request (M45) | |
 
 Spec section 5 gives each requirement's current status, and spec section 16.5 the rules the code doesn't meet yet.
 
@@ -526,7 +526,8 @@ Every gate is decided, so no phase is unlocked. Work now comes only from the own
 | 2026-11-03 | Reconcile `intent.md`, the spec, this plan, the research report, the decision log, `AGENTS.md` and `CLAUDE.md` with the decisions and the code, after a review of them. The spec marks six agreed rules the code doesn't meet as Open (spec section 16.5). No code, test or result changed | M41 | `baffcd3` |
 | 2026-11-03 | Publish `AGENTS.md`, `CLAUDE.md` and the five core documents in `project_docs/`, committed locally for the owner to check before pushing | M42 | `baffcd3` |
 | 2026-11-03 | Rename `sdlc/` to `project_docs/` | M43 | `21fe6b6` |
-| 2026-11-03 | Lower the minimum to Python 3.14, in `pyproject.toml`, the packaging test, the README and `CLAUDE.md` | M44 | The commit that adds this row |
-| 2026-11-03 | README: add PowerShell activation of the virtual environment to Install, with the execution-policy fix, rename two sections, and introduce the reproduction commands | Owner's request | The commit that adds this row |
+| 2026-11-03 | Lower the minimum to Python 3.14, in `pyproject.toml`, the packaging test, the README and `CLAUDE.md` | M44 | `97296dc` |
+| 2026-11-03 | README: add PowerShell activation of the virtual environment to Install, with the execution-policy fix, rename two sections, and introduce the reproduction commands | Owner's request | `97296dc` |
+| 2026-11-03 | Make the GitHub repo public, and verify it without a credential | M45 | No code commit. This row's commit records it |
 
-The open items are the owner's: push the rename commit (M43), make the repo public (R-34), check the company's rules on AI use (C25), and decide whether to fix C29 to C34 (PC24).
+The open items are the owner's: check the company's rules on AI use (C25), and decide whether to fix C29 to C34 (PC24).
